@@ -1,6 +1,6 @@
 /**
- * Blade & Buddy - 3D Dungeon Action Game
- * 3-Stage Combo Slash Motion (Top-Left to Bottom-Right -> Heavy Slash -> Horizontal Finisher)
+ * Blade & Buddy - 3D Dungeon Action RPG
+ * HP/MP System + Enemy Attacks & AI + 5 Monster Types + 5-Element 3-Tier Magic System + Elemental Weakness/Resistance
  */
 
 // =============================================================================
@@ -9,9 +9,9 @@
 const CONFIG = {
   playerSpeed: 7.5,
   playerTurnSpeed: 14.0,
-  zombieSpeed: 2.2,
-  zombieMaxCount: 15,
-  spawnInterval: 2.2,
+  playerMaxHp: 100,
+  playerMaxMp: 100,
+  mpRegenRate: 6.0, // 毎秒6 MP回復
   attackCooldown: 0.30,
   attackRange: 2.8,
   attackAngle: Math.PI * 0.65,
@@ -19,12 +19,14 @@ const CONFIG = {
   cameraLookOffset: new THREE.Vector3(0, 1.2, 2.0),
   cameraLerp: 0.1,
   petOffsets: [
-    new THREE.Vector3(-1.4, 1.8, -1.2), // 1体目: 左後方
-    new THREE.Vector3(1.4, 1.8, -1.2),  // 2体目: 右後方
-    new THREE.Vector3(0.0, 2.4, -1.8),  // 3体目: 真後方・高め
+    new THREE.Vector3(-1.4, 1.8, -1.2),
+    new THREE.Vector3(1.4, 1.8, -1.2),
+    new THREE.Vector3(0.0, 2.4, -1.8),
   ],
   petFollowSpeed: 6.0,
   petAttackRange: 12.0,
+  spawnInterval: 2.5,
+  maxRegularEnemies: 14,
 };
 
 const MODEL_CONFIG = {
@@ -35,24 +37,9 @@ const MODEL_CONFIG = {
     rotationOffset: new THREE.Euler(0, 0, 0),
     rightHandBoneNames: ['RightHand', 'mixamorigRightHand', 'hand.R', 'Hand.R', 'weapon_socket_r', 'Bip01_R_Hand'],
   },
-  buddy: {
-    url: '',
-    scale: 1.0,
-    positionOffset: new THREE.Vector3(0, 0, 0),
-    rotationOffset: new THREE.Euler(0, 0, 0),
-  },
-  zombie: {
-    url: '',
-    scale: 1.0,
-    positionOffset: new THREE.Vector3(0, 0, 0),
-    rotationOffset: new THREE.Euler(0, 0, 0),
-  },
-  sword: {
-    url: '',
-    scale: 1.0,
-    positionOffset: new THREE.Vector3(0, 0, 0),
-    rotationOffset: new THREE.Euler(0, 0, 0),
-  },
+  buddy: { url: '', scale: 1.0, positionOffset: new THREE.Vector3(0, 0, 0) },
+  zombie: { url: '', scale: 1.0, positionOffset: new THREE.Vector3(0, 0, 0) },
+  sword: { url: '', scale: 1.0, positionOffset: new THREE.Vector3(0, 0, 0) },
 };
 
 window.MODEL_CONFIG = MODEL_CONFIG;
@@ -60,6 +47,9 @@ window.MODEL_CONFIG = MODEL_CONFIG;
 const state = {
   kills: 0,
   coins: 0,
+  playerHp: 100,
+  playerMp: 100,
+  isGameOver: false,
   isPaused: false,
   isAttacking: false,
   attackTimer: 0,
@@ -70,7 +60,78 @@ const state = {
 };
 
 // =============================================================================
-// 1.2 プロシージャルテクスチャ生成器
+// 1.2 5大属性魔法定義 (各3段階レベルアップ)
+// =============================================================================
+const MAGIC_DATA = {
+  explosion: {
+    id: 'explosion',
+    name: '爆発魔法 (Explosion)',
+    element: 'explosion',
+    icon: '💥',
+    cost: 30,
+    color: 0xf97316,
+    tiers: [
+      { level: 1, name: 'エクスプロージョン', desc: '指定地点に強力な大爆発を起こし吹き飛ばす。', damage: 45, radius: 4.2, cost: 30, price: 0 },
+      { level: 2, name: 'メガエクスプロージョン', desc: '広域に連続3段誘爆を発生させ大ダメージ。', damage: 80, radius: 6.5, cost: 30, price: 80 },
+      { level: 3, name: 'ギガエクスプロージョン', desc: '全画面を揺るがす核爆発級の超巨大爆風。', damage: 140, radius: 11.0, cost: 30, price: 180 },
+    ],
+  },
+  flame: {
+    id: 'flame',
+    name: '炎魔法 (Flame)',
+    element: 'flame',
+    icon: '🔥',
+    cost: 20,
+    color: 0xef4444,
+    tiers: [
+      { level: 1, name: 'ファイアボール', desc: '前方へ貫通する灼熱火球を放つ。', damage: 35, speed: 18.0, cost: 20, price: 0 },
+      { level: 2, name: 'ファイアピラー', desc: '周囲に3本の巨大火柱を召喚し敵を焼き払う。', damage: 65, radius: 5.5, cost: 20, price: 80 },
+      { level: 3, name: 'インフェルノ・フレア', desc: '巨大な業火の渦が敵を引きずり込み炎上。', damage: 110, radius: 9.0, cost: 20, price: 180 },
+    ],
+  },
+  ice: {
+    id: 'ice',
+    name: '氷魔法 (Ice)',
+    element: 'ice',
+    icon: '❄️',
+    cost: 25,
+    color: 0x38bdf8,
+    tiers: [
+      { level: 1, name: 'アイススパイク', desc: '扇状に3本の氷槍を射出。敵を減速させる。', damage: 28, cost: 25, price: 0 },
+      { level: 2, name: 'フロストノヴァ', desc: '全方位360度を瞬時に凍結し、敵の動きを完全停止。', damage: 50, radius: 6.0, cost: 25, price: 80 },
+      { level: 3, name: 'アブソリュート・ゼロ', desc: '天空から超巨大氷山が落下し完全凍結粉砕。', damage: 95, radius: 9.5, cost: 25, price: 180 },
+    ],
+  },
+  wind: {
+    id: 'wind',
+    name: '風魔法 (Wind)',
+    element: 'wind',
+    icon: '🌪️',
+    cost: 20,
+    color: 0x10b981,
+    tiers: [
+      { level: 1, name: 'ウインドカッター', desc: '鋭い真空刃を高速3連射する。', damage: 30, cost: 20, price: 0 },
+      { level: 2, name: 'ゲイルスラッシュ', desc: '巨大な竜巻を放ち、周囲の敵を巻き込んで集敵。', damage: 55, radius: 6.0, cost: 20, price: 80 },
+      { level: 3, name: 'タイフーン・テンペスト', desc: '全方位に大嵐を巻き起こし、敵全員を宙へ吹き飛ばす。', damage: 90, radius: 10.0, cost: 20, price: 180 },
+    ],
+  },
+  thunder: {
+    id: 'thunder',
+    name: '雷魔法 (Thunder)',
+    element: 'thunder',
+    icon: '⚡',
+    cost: 25,
+    color: 0xeab308,
+    tiers: [
+      { level: 1, name: 'サンダーボルト', desc: '前方直線状に電撃ビームを突き抜く。', damage: 38, cost: 25, price: 0 },
+      { level: 2, name: 'チェインライトニング', desc: '敵から敵へ最大5回跳躍する連鎖雷撃。', damage: 60, cost: 25, price: 80 },
+      { level: 3, name: '神鳴・トールハンマー', desc: '天空から無数の神雷が降り注ぐ全天電撃天罰。', damage: 120, radius: 10.5, cost: 25, price: 180 },
+    ],
+  },
+};
+
+// =============================================================================
+// 1.3 プロシージャルテクスチャ生成器
 // =============================================================================
 class TextureGenerator {
   static createStoneFloorTexture() {
@@ -101,16 +162,6 @@ class TextureGenerator {
           const nSize = Math.random() * 4 + 1;
           ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)';
           ctx.fillRect(nx, ny, nSize, nSize);
-        }
-
-        if (Math.random() > 0.6) {
-          ctx.strokeStyle = 'rgba(10, 12, 16, 0.6)';
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(x + tileSize * 0.3, y + 4);
-          ctx.lineTo(x + tileSize * 0.5, y + tileSize * 0.5);
-          ctx.lineTo(x + tileSize * 0.8, y + tileSize - 4);
-          ctx.stroke();
         }
       }
     }
@@ -155,11 +206,6 @@ class TextureGenerator {
         const lum = 35 + Math.floor(Math.random() * 20);
         ctx.fillStyle = `rgb(${lum}, ${lum + 4}, ${lum + 8})`;
         ctx.fillRect(x + offset + 2, y + 2, bWidth - 4, bHeight - 4);
-
-        if (Math.random() > 0.4) {
-          ctx.fillStyle = 'rgba(15, 30, 20, 0.4)';
-          ctx.fillRect(x + offset + 4, y + bHeight - 8, bWidth - 8, 4);
-        }
       }
     }
 
@@ -172,7 +218,7 @@ class TextureGenerator {
 }
 
 // =============================================================================
-// 1.8 Web Audio API ダンジョンBGM & 迫力の「ズバッ！」SE & ゾンビ断末魔
+// 1.8 Web Audio API (BGM, SE, 魔法効果音, 被弾ボイス, 弱点ヒット音)
 // =============================================================================
 class SoundManager {
   constructor() {
@@ -203,7 +249,7 @@ class SoundManager {
     this.bgmGain.connect(this.masterGain);
 
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.setValueAtTime(0.75, this.ctx.currentTime);
+    this.sfxGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
     this.sfxGain.connect(this.masterGain);
   }
 
@@ -253,7 +299,7 @@ class SoundManager {
   }
 
   playStep(step, time) {
-    if (!this.ctx || this.isMuted) return;
+    if (!this.ctx || this.isMuted || state.isGameOver) return;
 
     const beatInBar = step % 16;
     const bar = Math.floor(step / 16);
@@ -386,7 +432,6 @@ class SoundManager {
     osc.stop(time + dur);
   }
 
-  // --- 空振りスイング音 (コンボ段階でピッチと迫力が変化) ---
   playAttackSlash(comboStep = 0) {
     if (!this.ctx || this.isMuted) return;
     const osc = this.ctx.createOscillator();
@@ -413,13 +458,11 @@ class SoundManager {
     osc.stop(this.ctx.currentTime + 0.15);
   }
 
-  // --- 迫力の「ズバッッ！」斬撃インパクト音 (3段目は特大重低音) ---
   playZubattoSlash(comboStep = 0) {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;
     const isFinisher = (comboStep === 2);
 
-    // 1. 鋭い高速切り裂きノイズ (Slash Sweep)
     const bufferSize = this.ctx.sampleRate * (isFinisher ? 0.24 : 0.18);
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -443,7 +486,6 @@ class SoundManager {
     noise.start(now);
     noise.stop(now + 0.19);
 
-    // 2. 重厚な肉体断裂インパクト
     const subOsc = this.ctx.createOscillator();
     const subGain = this.ctx.createGain();
     subOsc.type = 'triangle';
@@ -458,7 +500,6 @@ class SoundManager {
     subOsc.start(now);
     subOsc.stop(now + 0.26);
 
-    // 3. 刃の金属スパーク音
     const bladeOsc = this.ctx.createOscillator();
     const bladeGain = this.ctx.createGain();
     bladeOsc.type = 'sawtooth';
@@ -474,7 +515,149 @@ class SoundManager {
     bladeOsc.stop(now + 0.13);
   }
 
-  playZombieDeathScream() {
+  // 魔法発動音
+  playMagicSound(element, tier = 1) {
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    if (element === 'explosion') {
+      const bufferSize = this.ctx.sampleRate * (0.3 + tier * 0.15);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, now);
+      filter.frequency.exponentialRampToValueAtTime(60, now + 0.4);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(1.0 + tier * 0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain);
+      noise.start(now);
+      noise.stop(now + 0.45);
+
+    } else if (element === 'flame') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(450, now);
+      osc.frequency.exponentialRampToValueAtTime(90, now + 0.3);
+
+      gain.gain.setValueAtTime(0.7, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.32);
+
+    } else if (element === 'ice') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1800, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.25);
+
+      gain.gain.setValueAtTime(0.6, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.27);
+
+    } else if (element === 'wind') {
+      const bufferSize = this.ctx.sampleRate * 0.25;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400, now);
+      filter.frequency.exponentialRampToValueAtTime(400, now + 0.25);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.75, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain);
+      noise.start(now);
+      noise.stop(now + 0.26);
+
+    } else if (element === 'thunder') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(120, now);
+      osc.frequency.setValueAtTime(2400, now + 0.03);
+      osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+
+      gain.gain.setValueAtTime(0.9, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.32);
+    }
+  }
+
+  // 弱点ヒット効果音
+  playWeakHit() {
+    if (!this.ctx || this.isMuted) return;
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'triangle';
+    osc2.type = 'sine';
+    osc1.frequency.setValueAtTime(880, this.ctx.currentTime);
+    osc2.frequency.setValueAtTime(1760, this.ctx.currentTime + 0.05);
+
+    gain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc1.start(this.ctx.currentTime);
+    osc1.stop(this.ctx.currentTime + 0.06);
+    osc2.start(this.ctx.currentTime + 0.05);
+    osc2.stop(this.ctx.currentTime + 0.22);
+  }
+
+  // プレイヤー被弾音
+  playPlayerHurt() {
+    if (!this.ctx || this.isMuted) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.18);
+
+    gain.gain.setValueAtTime(0.8, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.19);
+  }
+
+  playZombieDeathScream(monsterType = 'zombie') {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;
 
@@ -485,14 +668,21 @@ class SoundManager {
     const filter = this.ctx.createBiquadFilter();
 
     carrier.type = 'sawtooth';
-    carrier.frequency.setValueAtTime(340 + Math.random() * 80, now);
-    carrier.frequency.exponentialRampToValueAtTime(65, now + 0.45);
+
+    let startFreq = 340;
+    if (monsterType === 'ghost') startFreq = 650;
+    else if (monsterType === 'goblin') startFreq = 500;
+    else if (monsterType === 'king_goblin') startFreq = 180;
+    else if (monsterType === 'demon') startFreq = 140;
+
+    carrier.frequency.setValueAtTime(startFreq + Math.random() * 60, now);
+    carrier.frequency.exponentialRampToValueAtTime(55, now + 0.45);
 
     modulator.type = 'sine';
-    modulator.frequency.setValueAtTime(45, now);
-    modulator.frequency.linearRampToValueAtTime(18, now + 0.45);
+    modulator.frequency.setValueAtTime(40, now);
+    modulator.frequency.linearRampToValueAtTime(15, now + 0.45);
 
-    modGain.gain.setValueAtTime(120, now);
+    modGain.gain.setValueAtTime(110, now);
     modGain.gain.linearRampToValueAtTime(20, now + 0.45);
 
     filter.type = 'lowpass';
@@ -606,243 +796,38 @@ class SoundManager {
 const soundManager = new SoundManager();
 
 // =============================================================================
-// 2. ショップアイテム定義
+// 2. ショップアイテム定義 (衣装・頭・刀・ペット)
 // =============================================================================
 const ITEMS_DATA = {
   outfits: {
-    default: {
-      id: 'default',
-      name: 'パラディン・アーマー',
-      price: 0,
-      desc: '銀と藍の聖騎士甲冑。重厚な胸当てと肩当てが特徴。',
-      icon: '🛡️',
-      heroColor: 0x2563eb,
-      armorColor: 0x64748b,
-      darkColor: 0x0f172a,
-      trimColor: 0x93c5fd,
-    },
-    crimson: {
-      id: 'crimson',
-      name: '狂戦士の紅蓮鎧',
-      price: 50,
-      desc: '歴戦の血潮を宿した紅蓮のプレートアーマー。',
-      icon: '🔴',
-      heroColor: 0xdc2626,
-      armorColor: 0x450a0a,
-      darkColor: 0x1f0606,
-      trimColor: 0xfca5a5,
-    },
-    shadow: {
-      id: 'shadow',
-      name: '黒影の忍装束',
-      price: 100,
-      desc: '深淵の闇に溶け込む暗殺者のハイテックニンジャスーツ。',
-      icon: '🥷',
-      heroColor: 0x18181b,
-      armorColor: 0x27272a,
-      darkColor: 0x09090b,
-      trimColor: 0xa855f7,
-    },
-    gold: {
-      id: 'gold',
-      name: '黄金聖騎士甲冑',
-      price: 200,
-      desc: 'まばゆい黄金の装飾が施された伝説の聖騎士アーマー。',
-      icon: '👑',
-      heroColor: 0xeab308,
-      armorColor: 0xf59e0b,
-      darkColor: 0x713f12,
-      trimColor: 0xfef08a,
-    },
-    neon_green: {
-      id: 'neon_green',
-      name: 'エメラルド・ヴァンガード',
-      price: 120,
-      desc: '古代遺跡の秘石が埋め込まれた翠玉のバトルアーマー。',
-      icon: '🟢',
-      heroColor: 0x059669,
-      armorColor: 0x047857,
-      darkColor: 0x022c22,
-      trimColor: 0x6ee7b7,
-    },
+    default: { id: 'default', name: 'パラディン・アーマー', price: 0, desc: '銀と藍の聖騎士甲冑。', icon: '🛡️', heroColor: 0x2563eb, armorColor: 0x64748b, darkColor: 0x0f172a, trimColor: 0x93c5fd },
+    crimson: { id: 'crimson', name: '狂戦士の紅蓮鎧', price: 50, desc: '歴戦の血潮を宿した紅蓮の鎧。', icon: '🔴', heroColor: 0xdc2626, armorColor: 0x450a0a, darkColor: 0x1f0606, trimColor: 0xfca5a5 },
+    shadow: { id: 'shadow', name: '黒影の忍装束', price: 100, desc: '深淵の闇に溶け込むニンジャスーツ。', icon: '🥷', heroColor: 0x18181b, armorColor: 0x27272a, darkColor: 0x09090b, trimColor: 0xa855f7 },
+    gold: { id: 'gold', name: '黄金聖騎士甲冑', price: 200, desc: '黄金装飾が施された聖騎士アーマー。', icon: '👑', heroColor: 0xeab308, armorColor: 0xf59e0b, darkColor: 0x713f12, trimColor: 0xfef08a },
+    neon_green: { id: 'neon_green', name: 'エメラルド・ヴァンガード', price: 120, desc: '古代遺跡の秘石が埋め込まれた鎧。', icon: '🟢', heroColor: 0x059669, armorColor: 0x047857, darkColor: 0x022c22, trimColor: 0x6ee7b7 },
   },
   heads: {
-    none: {
-      id: 'none',
-      name: '標準バイザー・額当て',
-      price: 0,
-      desc: '軽快なヘッドバンドと光るバイザー。',
-      icon: '👤',
-    },
-    sunglasses: {
-      id: 'sunglasses',
-      name: 'クールシェード',
-      price: 40,
-      desc: 'ダンジョンの暗闇でも視界を確保するスタイリッシュシェード。',
-      icon: '🕶️',
-    },
-    ninja_band: {
-      id: 'ninja_band',
-      name: '深紅の忍ハチマキ',
-      price: 80,
-      desc: '風になびくロングテールハチマキ。集中力を極限まで高める。',
-      icon: '🧣',
-    },
-    samurai_helm: {
-      id: 'samurai_helm',
-      name: '重装サムライ兜',
-      price: 150,
-      desc: '黄金の前立てと鉄の吹き返しを備えた重厚な武者兜。',
-      icon: '⛩️',
-    },
-    cyber_horns: {
-      id: 'cyber_horns',
-      name: 'デモンホーンクラウン',
-      price: 180,
-      desc: '真紅に妖しく光る魔神の角冠。',
-      icon: '😈',
-    },
+    none: { id: 'none', name: '標準バイザー・額当て', price: 0, desc: '軽快なヘッドバンドと光るバイザー。', icon: '👤' },
+    sunglasses: { id: 'sunglasses', name: 'クールシェード', price: 40, desc: 'スタイリッシュシェード。', icon: '🕶️' },
+    ninja_band: { id: 'ninja_band', name: '深紅の忍ハチマキ', price: 80, desc: '風になびくロングテールハチマキ。', icon: '🧣' },
+    samurai_helm: { id: 'samurai_helm', name: '重装サムライ兜', price: 150, desc: '黄金の前立てを備えた武者兜。', icon: '⛩️' },
+    cyber_horns: { id: 'cyber_horns', name: 'デモンホーンクラウン', price: 180, desc: '真紅に光る魔神の角冠。', icon: '😈' },
   },
   swords: {
-    default: {
-      id: 'default',
-      name: '銀翼の騎士刀',
-      price: 0,
-      desc: '青白く輝く刃紋と真鍮の鍔を持つ美しい名刀。',
-      icon: '🗡️',
-      bladeColor: 0x38bdf8,
-      emissive: 0x0284c7,
-      slashColor: 0x38bdf8,
-      effectType: null,
-      tag: 'NORMAL',
-    },
-    flame: {
-      id: 'flame',
-      name: '焔切・紅蓮 (炎)',
-      price: 80,
-      desc: '紅蓮の炎を常にまとい、火の粉が舞い散る灼熱の刀。',
-      icon: '🔥',
-      bladeColor: 0xf97316,
-      emissive: 0xd97706,
-      slashColor: 0xef4444,
-      effectType: 'flame',
-      tag: '炎属性',
-    },
-    thunder: {
-      id: 'thunder',
-      name: '雷切・鳴神 (雷)',
-      price: 120,
-      desc: '激しい青白のスパークと雷光を放つ迅雷の太刀。',
-      icon: '⚡',
-      bladeColor: 0x67e8f9,
-      emissive: 0x0284c7,
-      slashColor: 0x38bdf8,
-      effectType: 'thunder',
-      tag: '雷属性',
-    },
-    void: {
-      id: 'void',
-      name: '虚空・冥府 (闇)',
-      price: 180,
-      desc: '冥府の妖気とダークマターをまとう紫紺の妖刀。',
-      icon: '🔮',
-      bladeColor: 0xc084fc,
-      emissive: 0x7e22ce,
-      slashColor: 0xa855f7,
-      effectType: 'void',
-      tag: '闇属性',
-    },
-    sunlight: {
-      id: 'sunlight',
-      name: '聖剣ソラリス (光)',
-      price: 250,
-      desc: '神聖な黄金の光粒子を放つ伝説の光刃。',
-      icon: '✨',
-      bladeColor: 0xfde047,
-      emissive: 0xeab308,
-      slashColor: 0xfacc15,
-      effectType: 'holy',
-      tag: '光属性',
-    },
+    default: { id: 'default', name: '銀翼の騎士刀', price: 0, desc: '青白く輝く刃紋を持つ美しい名刀。', icon: '🗡️', bladeColor: 0x38bdf8, emissive: 0x0284c7, slashColor: 0x38bdf8, effectType: null, tag: 'NORMAL' },
+    flame: { id: 'flame', name: '焔切・紅蓮 (炎)', price: 80, desc: '紅蓮の炎をまとう灼熱の刀。', icon: '🔥', bladeColor: 0xf97316, emissive: 0xd97706, slashColor: 0xef4444, effectType: 'flame', tag: '炎属性' },
+    thunder: { id: 'thunder', name: '雷切・鳴神 (雷)', price: 120, desc: '青白のスパークを放つ迅雷の太刀。', icon: '⚡', bladeColor: 0x67e8f9, emissive: 0x0284c7, slashColor: 0x38bdf8, effectType: 'thunder', tag: '雷属性' },
+    void: { id: 'void', name: '虚空・冥府 (闇)', price: 180, desc: '冥府の妖気をまとう紫紺の妖刀。', icon: '🔮', bladeColor: 0xc084fc, emissive: 0x7e22ce, slashColor: 0xa855f7, effectType: 'void', tag: '闇属性' },
+    sunlight: { id: 'sunlight', name: '聖剣ソラリス (光)', price: 250, desc: '黄金の光粒子を放つ伝説の光刃。', icon: '✨', bladeColor: 0xfde047, emissive: 0xeab308, slashColor: 0xfacc15, effectType: 'holy', tag: '光属性' },
   },
   pets: {
-    fairy: {
-      id: 'fairy',
-      name: 'フェアリー (妖精)',
-      price: 0,
-      desc: 'ピンクの魔法光弾で3秒毎にバランスよく援護。',
-      icon: '🧚',
-      bulletType: 'magic',
-      bulletSpeed: 16.0,
-      attackInterval: 3.0,
-      tag: 'バランス型',
-    },
-    gorilla: {
-      id: 'gorilla',
-      name: 'マッスルゴリラ',
-      price: 80,
-      desc: '重力岩石弾を投げつけ、ゾンビを一撃粉砕する剛力バディ。',
-      icon: '🦍',
-      bulletType: 'rock',
-      bulletSpeed: 14.0,
-      attackInterval: 3.2,
-      tag: '高威力岩石',
-    },
-    lion: {
-      id: 'lion',
-      name: 'ブレイズライオン',
-      price: 120,
-      desc: '百獣の王の咆哮とともに紅蓮の火球を放ち敵を焼き尽くす。',
-      icon: '🦁',
-      bulletType: 'fireball',
-      bulletSpeed: 18.0,
-      attackInterval: 2.8,
-      tag: '爆熱火球',
-    },
-    pig: {
-      id: 'pig',
-      name: 'ピギーラッキー',
-      price: 60,
-      desc: '愛らしいピンクの幸運ブタ。バウンドするマッドボムを投擲。',
-      icon: '🐷',
-      bulletType: 'mud',
-      bulletSpeed: 15.0,
-      attackInterval: 3.0,
-      tag: 'マッドボム',
-    },
-    dog: {
-      id: 'dog',
-      name: 'シバイヌ・ボルト',
-      price: 70,
-      desc: '忠実な相棒犬。回転するボーンブーメランを素早く射出。',
-      icon: '🐶',
-      bulletType: 'bone',
-      bulletSpeed: 19.0,
-      attackInterval: 2.3,
-      tag: '快速迎撃',
-    },
-    cheetah: {
-      id: 'cheetah',
-      name: 'ソニックチーター',
-      price: 150,
-      desc: '最速のプレデター。電光レーザー弾を猛烈な速度で連射。',
-      icon: '🐆',
-      bulletType: 'laser',
-      bulletSpeed: 24.0,
-      attackInterval: 1.8,
-      tag: '超連射レーザー',
-    },
-    unicorn: {
-      id: 'unicorn',
-      name: 'スターユニコーン',
-      price: 200,
-      desc: '神秘の聖獣。七色に煌めくスター光線で敵を貫く。',
-      icon: '🦄',
-      bulletType: 'rainbow',
-      bulletSpeed: 20.0,
-      attackInterval: 2.5,
-      tag: 'レインボー光線',
-    },
+    fairy: { id: 'fairy', name: 'フェアリー (妖精)', price: 0, desc: 'ピンクの魔法光弾で援護。', icon: '🧚', bulletType: 'magic', bulletSpeed: 16.0, attackInterval: 3.0, tag: 'バランス型' },
+    gorilla: { id: 'gorilla', name: 'マッスルゴリラ', price: 80, desc: '重力岩石弾を投げつける。', icon: '🦍', bulletType: 'rock', bulletSpeed: 14.0, attackInterval: 3.2, tag: '高威力岩石' },
+    lion: { id: 'lion', name: 'ブレイズライオン', price: 120, desc: '紅蓮の火球を放つ。', icon: '🦁', bulletType: 'fireball', bulletSpeed: 18.0, attackInterval: 2.8, tag: '爆熱火球' },
+    pig: { id: 'pig', name: 'ピギーラッキー', price: 60, desc: 'バウンドするマッドボムを投擲。', icon: '🐷', bulletType: 'mud', bulletSpeed: 15.0, attackInterval: 3.0, tag: 'マッドボム' },
+    dog: { id: 'dog', name: 'シバイヌ・ボルト', price: 70, desc: '回転するボーンブーメランを射出。', icon: '🐶', bulletType: 'bone', bulletSpeed: 19.0, attackInterval: 2.3, tag: '快速迎撃' },
+    cheetah: { id: 'cheetah', name: 'ソニックチーター', price: 150, desc: '電光レーザー弾を超連射。', icon: '🐆', bulletType: 'laser', bulletSpeed: 24.0, attackInterval: 1.8, tag: '超連射レーザー' },
+    unicorn: { id: 'unicorn', name: 'スターユニコーン', price: 200, desc: '七色に煌めくスター光線。', icon: '🦄', bulletType: 'rainbow', bulletSpeed: 20.0, attackInterval: 2.5, tag: 'レインボー光線' },
   },
 };
 
@@ -850,7 +835,7 @@ const ITEMS_DATA = {
 // 3. セーブデータ管理
 // =============================================================================
 class SaveManager {
-  static STORAGE_KEY = 'blade_and_buddy_save_v1';
+  static STORAGE_KEY = 'blade_and_buddy_save_v2';
 
   static getDefaultData() {
     return {
@@ -867,6 +852,13 @@ class SaveManager {
         swords: ['default'],
         pets: ['fairy'],
       },
+      magicLevels: {
+        explosion: 1,
+        flame: 1,
+        ice: 1,
+        wind: 1,
+        thunder: 1,
+      },
     };
   }
 
@@ -880,8 +872,6 @@ class SaveManager {
       if (Array.isArray(data.equipped?.pets)) {
         pets = data.equipped.pets.filter(p => ITEMS_DATA.pets[p]).slice(0, 3);
         if (pets.length === 0) pets = ['fairy'];
-      } else if (typeof data.equipped?.pet === 'string' && ITEMS_DATA.pets[data.equipped.pet]) {
-        pets = [data.equipped.pet];
       }
 
       let unlockedPets = ['fairy'];
@@ -889,6 +879,14 @@ class SaveManager {
         unlockedPets = data.unlocked.pets.filter(p => ITEMS_DATA.pets[p]);
         if (!unlockedPets.includes('fairy')) unlockedPets.push('fairy');
       }
+
+      const magicLevels = {
+        explosion: data.magicLevels?.explosion || 1,
+        flame: data.magicLevels?.flame || 1,
+        ice: data.magicLevels?.ice || 1,
+        wind: data.magicLevels?.wind || 1,
+        thunder: data.magicLevels?.thunder || 1,
+      };
 
       return {
         coins: typeof data.coins === 'number' ? data.coins : 0,
@@ -904,9 +902,10 @@ class SaveManager {
           swords: Array.isArray(data.unlocked?.swords) ? data.unlocked.swords : ['default'],
           pets: unlockedPets,
         },
+        magicLevels,
       };
     } catch (e) {
-      console.warn('Failed to load save data from localStorage:', e);
+      console.warn('Failed to load save data:', e);
       return this.getDefaultData();
     }
   }
@@ -915,7 +914,7 @@ class SaveManager {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
-      console.warn('Failed to save data to localStorage:', e);
+      console.warn('Failed to save data:', e);
     }
   }
 }
@@ -933,12 +932,8 @@ class ModelLoader {
   }
 
   async loadGLTF(url) {
-    if (!url) return null;
-    if (!this.loader) return null;
-
-    if (this.cache.has(url)) {
-      return this.cloneGLTFData(this.cache.get(url));
-    }
+    if (!url || !this.loader) return null;
+    if (this.cache.has(url)) return this.cloneGLTFData(this.cache.get(url));
 
     return new Promise((resolve) => {
       this.loader.load(
@@ -954,8 +949,8 @@ class ModelLoader {
           resolve(this.cloneGLTFData(gltf));
         },
         undefined,
-        (error) => {
-          console.warn(`[ModelLoader] Failed to load GLTF from "${url}":`, error);
+        (err) => {
+          console.warn(`[ModelLoader] Error loading ${url}:`, err);
           resolve(null);
         }
       );
@@ -963,10 +958,7 @@ class ModelLoader {
   }
 
   cloneGLTFData(gltf) {
-    return {
-      scene: gltf.scene.clone(true),
-      animations: gltf.animations || [],
-    };
+    return { scene: gltf.scene.clone(true), animations: gltf.animations || [] };
   }
 
   findRightHandBone(model, candidateNames) {
@@ -993,12 +985,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x06070a);
 scene.fog = new THREE.FogExp2(0x090b10, 0.028);
 
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  120
-);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 120);
 camera.position.set(0, 6, -8);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -1047,11 +1034,7 @@ function createDungeonEnvironment() {
   const brickWallTex = TextureGenerator.createBrickWallTexture();
 
   const floorGeo = new THREE.PlaneGeometry(80, 80);
-  const floorMat = new THREE.MeshStandardMaterial({
-    map: stoneFloorTex,
-    roughness: 0.85,
-    metalness: 0.15,
-  });
+  const floorMat = new THREE.MeshStandardMaterial({ map: stoneFloorTex, roughness: 0.85, metalness: 0.15 });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -1071,11 +1054,7 @@ function createDungeonEnvironment() {
   arenaBorder.position.y = 0.02;
   scene.add(arenaBorder);
 
-  const pillarMat = new THREE.MeshStandardMaterial({
-    map: brickWallTex,
-    roughness: 0.9,
-    metalness: 0.1,
-  });
+  const pillarMat = new THREE.MeshStandardMaterial({ map: brickWallTex, roughness: 0.9, metalness: 0.1 });
   const ironMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5, metalness: 0.9 });
   const fireMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
 
@@ -1212,7 +1191,6 @@ createDungeonEnvironment();
 class SwordParticleSystem {
   constructor() {
     this.particles = [];
-    this.spawnTimer = 0;
     this.boxGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
   }
 
@@ -1225,28 +1203,14 @@ class SwordParticleSystem {
     let speed = isAttacking ? 3.0 : 1.2;
 
     switch (effectType) {
-      case 'flame':
-        colorHex = Math.random() > 0.3 ? 0xef4444 : 0xf97316;
-        break;
-      case 'thunder':
-        colorHex = Math.random() > 0.4 ? 0x38bdf8 : 0xffffff;
-        particleLife = 0.25;
-        speed *= 1.4;
-        break;
-      case 'void':
-        colorHex = Math.random() > 0.3 ? 0xa855f7 : 0x4c1d95;
-        break;
-      case 'holy':
-        colorHex = Math.random() > 0.3 ? 0xfacc15 : 0xfef08a;
-        break;
+      case 'flame': colorHex = Math.random() > 0.3 ? 0xef4444 : 0xf97316; break;
+      case 'thunder': colorHex = Math.random() > 0.4 ? 0x38bdf8 : 0xffffff; particleLife = 0.25; speed *= 1.4; break;
+      case 'void': colorHex = Math.random() > 0.3 ? 0xa855f7 : 0x4c1d95; break;
+      case 'holy': colorHex = Math.random() > 0.3 ? 0xfacc15 : 0xfef08a; break;
     }
 
     for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: colorHex,
-        transparent: true,
-        opacity: 0.9,
-      });
+      const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.9 });
       const mesh = new THREE.Mesh(this.boxGeo, mat);
       
       mesh.position.copy(swordWorldPos);
@@ -1261,12 +1225,7 @@ class SwordParticleSystem {
       );
 
       scene.add(mesh);
-      this.particles.push({
-        mesh,
-        vel,
-        life: particleLife,
-        maxLife: particleLife,
-      });
+      this.particles.push({ mesh, vel, life: particleLife, maxLife: particleLife });
     }
   }
 
@@ -1291,7 +1250,7 @@ class SwordParticleSystem {
 }
 
 // =============================================================================
-// 8. プレイヤーキャラクター生成 (3段コンボ斬撃モーション対応)
+// 8. プレイヤーキャラクター生成 (HP/MP, 被弾, 3段コンボ, 魔法詠唱)
 // =============================================================================
 class Player {
   constructor() {
@@ -1304,8 +1263,15 @@ class Player {
     this.walkCycle = 0;
     this.isMoving = false;
 
+    // HP & MP
+    this.hp = CONFIG.playerMaxHp;
+    this.maxHp = CONFIG.playerMaxHp;
+    this.mp = CONFIG.playerMaxMp;
+    this.maxMp = CONFIG.playerMaxMp;
+    this.invincibleTimer = 0; // 被弾無敵時間
+
     // 3段コンボ管理
-    this.comboStep = 0; // 0: 左上→右下, 1: 左上→右下(連撃), 2: 左→右(水平薙ぎ払い)
+    this.comboStep = 0;
     this.comboResetTimer = 0;
 
     this.hasCustomModel = false;
@@ -1330,7 +1296,6 @@ class Player {
     this.group.add(this.defaultMeshGroup);
     this.buildDefaultMesh();
 
-    // 斬撃エフェクト (コンボごとに形状と角度を動的に調整)
     const slashGeo = new THREE.RingGeometry(1.2, 2.3, 20, 1, 0, Math.PI * 0.75);
     this.slashMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
@@ -1362,27 +1327,23 @@ class Player {
     this.goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
     this.visorMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
 
-    // 胴体インナー
     const bodyGeo = new THREE.BoxGeometry(0.68, 0.78, 0.42);
     this.body = new THREE.Mesh(bodyGeo, this.heroMat);
     this.body.position.y = 1.1;
     this.body.castShadow = true;
     this.defaultMeshGroup.add(this.body);
 
-    // 重厚なブレストプレート
     const breastplateGeo = new THREE.BoxGeometry(0.72, 0.45, 0.16);
     this.breastplate = new THREE.Mesh(breastplateGeo, this.armorMat);
     this.breastplate.position.set(0, 0.12, 0.18);
     this.breastplate.castShadow = true;
     this.body.add(this.breastplate);
 
-    // 胸の黄金エンブレム
     const emblemGeo = new THREE.OctahedronGeometry(0.12, 0);
     const emblem = new THREE.Mesh(emblemGeo, this.goldTrimMat);
     emblem.position.set(0, 0.12, 0.28);
     this.body.add(emblem);
 
-    // 革ベルト ＆ バックル
     const beltGeo = new THREE.BoxGeometry(0.72, 0.12, 0.46);
     const belt = new THREE.Mesh(beltGeo, this.leatherMat);
     belt.position.set(0, -0.22, 0);
@@ -1392,7 +1353,6 @@ class Player {
     buckle.position.set(0, -0.22, 0.24);
     this.body.add(buckle);
 
-    // 頭部 & ヘルメット
     const headGeo = new THREE.BoxGeometry(0.42, 0.42, 0.42);
     this.head = new THREE.Mesh(headGeo, this.skinMat);
     this.head.position.set(0, 0.62, 0);
@@ -1419,7 +1379,6 @@ class Player {
     this.headGearGroup = new THREE.Group();
     this.head.add(this.headGearGroup);
 
-    // 腕・立体肩当て ＆ 籠手
     const armGeo = new THREE.BoxGeometry(0.18, 0.65, 0.18);
     const pauldronGeo = new THREE.BoxGeometry(0.32, 0.24, 0.32);
     const gauntletGeo = new THREE.BoxGeometry(0.22, 0.28, 0.22);
@@ -1456,7 +1415,6 @@ class Player {
 
     this.createSword();
 
-    // 脚・立体膝当て ＆ すね当て
     const legGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
     const kneeGeo = new THREE.BoxGeometry(0.28, 0.16, 0.12);
     const bootGeo = new THREE.BoxGeometry(0.26, 0.18, 0.32);
@@ -1546,9 +1504,7 @@ class Player {
       return;
     }
 
-    if (this.customModel) {
-      this.group.remove(this.customModel);
-    }
+    if (this.customModel) this.group.remove(this.customModel);
 
     this.customModel = data.scene;
     const cfg = MODEL_CONFIG.player;
@@ -1605,31 +1561,16 @@ class Player {
 
     if (this.actions.idle) {
       this.fadeToAction('idle', 0.1);
-    } else if (animations.length > 0) {
-      const firstAction = this.mixer.clipAction(animations[0]);
-      firstAction.play();
     }
-
-    this.mixer.addEventListener('finished', (e) => {
-      if (this.actions.attack && e.action === this.actions.attack) {
-        state.isAttacking = false;
-        this.slashMesh.material.opacity = 0;
-        this.fadeToAction(this.isMoving ? 'walk' : 'idle', 0.2);
-      }
-    });
   }
 
   fadeToAction(targetName, duration = 0.2) {
     if (!this.mixer || !this.actions[targetName]) return;
-
     const nextAction = this.actions[targetName];
     if (this.currentActionName === targetName && nextAction.isRunning()) return;
 
     const prevAction = this.currentActionName ? this.actions[this.currentActionName] : null;
-
-    if (prevAction && prevAction !== nextAction) {
-      prevAction.fadeOut(duration);
-    }
+    if (prevAction && prevAction !== nextAction) prevAction.fadeOut(duration);
 
     nextAction.reset().fadeIn(duration).play();
     this.currentActionName = targetName;
@@ -1755,11 +1696,30 @@ class Player {
   }
 
   update(delta) {
+    if (state.isGameOver) return;
+
+    // MP自動回復
+    if (this.mp < this.maxMp) {
+      this.mp = Math.min(this.maxMp, this.mp + CONFIG.mpRegenRate * delta);
+      updateStatusHUD();
+    }
+
+    // 無敵タイマー
+    if (this.invincibleTimer > 0) {
+      this.invincibleTimer -= delta;
+      const isBlink = Math.floor(this.invincibleTimer * 16) % 2 === 0;
+      this.defaultMeshGroup.visible = isBlink;
+      if (this.customModel) this.customModel.visible = isBlink;
+    } else {
+      this.defaultMeshGroup.visible = !this.hasCustomModel;
+      if (this.customModel) this.customModel.visible = true;
+    }
+
     // コンボ受付タイマー
     if (this.comboResetTimer > 0) {
       this.comboResetTimer -= delta;
       if (this.comboResetTimer <= 0) {
-        this.comboStep = 0; // コンボリセット
+        this.comboStep = 0;
       }
     }
 
@@ -1813,11 +1773,8 @@ class Player {
     if (this.mixer) {
       this.mixer.update(delta);
       if (!state.isAttacking) {
-        if (this.isMoving) {
-          this.fadeToAction('walk', 0.15);
-        } else {
-          this.fadeToAction('idle', 0.2);
-        }
+        if (this.isMoving) this.fadeToAction('walk', 0.15);
+        else this.fadeToAction('idle', 0.2);
       }
     } else {
       if (state.isAttacking) {
@@ -1850,18 +1807,71 @@ class Player {
     }
   }
 
+  takeDamage(amount, fromPos) {
+    if (this.invincibleTimer > 0 || state.isGameOver) return;
+
+    this.hp = Math.max(0, this.hp - amount);
+    this.invincibleTimer = 1.0; // 1秒間無敵
+
+    soundManager.playPlayerHurt();
+    cameraController.shake(0.35);
+
+    // 画面赤フラッシュ
+    const overlay = document.getElementById('damage-overlay');
+    if (overlay) {
+      overlay.classList.add('is-hit');
+      setTimeout(() => overlay.classList.remove('is-hit'), 180);
+    }
+
+    // ノックバック
+    if (fromPos) {
+      const knockDir = new THREE.Vector3().subVectors(this.group.position, fromPos);
+      knockDir.y = 0;
+      knockDir.normalize();
+      this.group.position.addScaledVector(knockDir, 0.8);
+    }
+
+    updateStatusHUD();
+
+    if (this.hp <= 0) {
+      this.die();
+    }
+  }
+
+  die() {
+    state.isGameOver = true;
+    soundManager.playPlayerHurt();
+
+    const goModal = document.getElementById('gameover-modal');
+    const goKills = document.getElementById('go-kills');
+    const goCoins = document.getElementById('go-coins');
+    if (goKills) goKills.innerText = state.kills;
+    if (goCoins) goCoins.innerText = state.coins;
+    if (goModal) goModal.classList.remove('hidden');
+  }
+
+  respawn() {
+    this.hp = this.maxHp;
+    this.mp = this.maxMp;
+    this.invincibleTimer = 2.0;
+    this.group.position.set(0, 0, 0);
+    state.isGameOver = false;
+
+    const goModal = document.getElementById('gameover-modal');
+    if (goModal) goModal.classList.add('hidden');
+    updateStatusHUD();
+  }
+
   attack() {
-    if (!state.canAttack || state.isAttacking || state.isPaused) return;
+    if (!state.canAttack || state.isAttacking || state.isPaused || state.isGameOver) return;
 
     soundManager.unlock();
-
-    // コンボステップに応じた攻撃音
     soundManager.playAttackSlash(this.comboStep);
 
     state.isAttacking = true;
     state.canAttack = false;
     state.attackTimer = 0;
-    this.comboResetTimer = 0.85; // 0.85秒以内なら次のコンボへ
+    this.comboResetTimer = 0.85;
 
     const btn = document.getElementById('btn-attack');
     if (btn) {
@@ -1879,66 +1889,47 @@ class Player {
 
     this.performAttackHitCheck();
 
-    // 次のコンボへ進める (0 -> 1 -> 2 -> 0)
     const currentStep = this.comboStep;
     this.comboStep = (this.comboStep + 1) % 3;
 
     setTimeout(() => {
       state.canAttack = true;
-    }, (currentStep === 2 ? 0.4 : CONFIG.attackCooldown) * 1000);
+    }, (currentStep === 2 ? 0.38 : CONFIG.attackCooldown) * 1000);
   }
 
-  // 3段コンボ斬撃アニメーション
   updateAttackAnimation(delta) {
     state.attackTimer += delta;
-    const duration = (this.comboStep === 0) ? 0.28 : 0.24; // 3段目は少し長めの豪快な振り
+    const duration = (this.comboStep === 0) ? 0.28 : 0.24;
     const progress = Math.min(state.attackTimer / duration, 1.0);
-
-    // 直前に実行した攻撃（currentActiveCombo = (this.comboStep + 2) % 3）
     const activeCombo = (this.comboStep + 2) % 3;
 
     if (progress < 1.0) {
-      const ease = Math.sin(progress * Math.PI * 0.5); // イージング
+      const ease = Math.sin(progress * Math.PI * 0.5);
 
       if (activeCombo === 0) {
-        // 【1段目: 左上から右下への袈裟斬り】
-        // 左上高く持ち上げて、右下へ斜めに一気に斬り下ろす
-        this.rightArmPivot.rotation.x = 0.9 - ease * 1.6;  // 0.9 -> -0.7
-        this.rightArmPivot.rotation.y = -0.8 + ease * 1.6; // -0.8 -> 0.8
-        this.rightArmPivot.rotation.z = 0.6 - ease * 1.0;  // 0.6 -> -0.4
-
+        this.rightArmPivot.rotation.x = 0.9 - ease * 1.6;
+        this.rightArmPivot.rotation.y = -0.8 + ease * 1.6;
+        this.rightArmPivot.rotation.z = 0.6 - ease * 1.0;
         this.body.rotation.y = -0.25 + ease * 0.55;
-        this.body.rotation.z = -0.15 + ease * 0.25;
 
-        // 斬撃軌跡リング (左上→右下の斜めリング)
         this.slashMesh.position.set(0.1, 1.1, 0.85);
         this.slashMesh.rotation.set(Math.PI / 3, -0.35, -0.6 + ease * 0.8);
         this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 0.9;
-
       } else if (activeCombo === 1) {
-        // 【2段目: 左上から右下への深く鋭い連撃斬り】
-        // さらに深く左上に溜めて、右下へ踏み込んで叩き斬る
-        this.rightArmPivot.rotation.x = 1.1 - ease * 1.9;  // 1.1 -> -0.8
-        this.rightArmPivot.rotation.y = -0.9 + ease * 1.8; // -0.9 -> 0.9
-        this.rightArmPivot.rotation.z = 0.7 - ease * 1.2;  // 0.7 -> -0.5
-
+        this.rightArmPivot.rotation.x = 1.1 - ease * 1.9;
+        this.rightArmPivot.rotation.y = -0.9 + ease * 1.8;
+        this.rightArmPivot.rotation.z = 0.7 - ease * 1.2;
         this.body.rotation.y = -0.35 + ease * 0.7;
-        this.body.rotation.x = ease * 0.2;
 
         this.slashMesh.position.set(0.15, 0.95, 0.9);
         this.slashMesh.rotation.set(Math.PI / 2.6, -0.25, -0.8 + ease * 0.9);
         this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 0.95;
-
       } else {
-        // 【3段目: 左から右への豪快な水平一文字大薙ぎ払いフィニッシュ！】
-        // 左腰から右方向へ180度以上力強く水平に振り抜く
-        this.rightArmPivot.rotation.x = 0.15 - ease * 0.1;  // 水平維持
-        this.rightArmPivot.rotation.y = -1.6 + ease * 3.2;  // -1.6 -> +1.6 (左から右へ大回転)
+        this.rightArmPivot.rotation.x = 0.15 - ease * 0.1;
+        this.rightArmPivot.rotation.y = -1.6 + ease * 3.2;
         this.rightArmPivot.rotation.z = 0.2 - ease * 0.4;
+        this.body.rotation.y = -0.6 + ease * 1.3;
 
-        this.body.rotation.y = -0.6 + ease * 1.3; // 体全体で大回転薙ぎ払い
-
-        // 巨大な水平斬撃リング
         this.slashMesh.position.set(0, 1.1, 0.95);
         this.slashMesh.rotation.set(Math.PI / 2, 0, -Math.PI * 0.5 + ease * Math.PI * 1.1);
         this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 1.0;
@@ -1957,27 +1948,25 @@ class Player {
     const pPos = this.group.position;
     let hitAny = false;
 
-    // 3段目フィニッシャーは射程と攻撃角度が大幅に拡大！
     const attackRange = (activeCombo === 2) ? 3.4 : CONFIG.attackRange;
     const attackAngle = (activeCombo === 2) ? Math.PI * 0.95 : CONFIG.attackAngle;
+    const baseDamage = (activeCombo === 2) ? 45 : (activeCombo === 1 ? 30 : 22);
 
-    zombieManager.zombies.forEach((zombie) => {
-      if (zombie.isDead || zombie.isDying) return;
+    enemyManager.enemies.forEach((enemy) => {
+      if (enemy.isDead || enemy.isDying) return;
 
-      const zPos = zombie.group.position;
-      const toZombie = new THREE.Vector3().subVectors(zPos, pPos);
-      toZombie.y = 0;
-      const dist = toZombie.length();
+      const toEnemy = new THREE.Vector3().subVectors(enemy.group.position, pPos);
+      toEnemy.y = 0;
+      const dist = toEnemy.length();
 
       if (dist <= attackRange) {
-        toZombie.normalize();
-        const dot = forward.dot(toZombie);
+        toEnemy.normalize();
+        const dot = forward.dot(toEnemy);
         const minDot = Math.cos(attackAngle / 2);
 
         if (dot >= minDot) {
           hitAny = true;
-          // 3段目は吹き飛び力が特大
-          zombie.die(toZombie, activeCombo === 2);
+          enemy.takeDamage(baseDamage, toEnemy, null, activeCombo === 2);
         }
       }
     });
@@ -1988,13 +1977,538 @@ class Player {
       cameraController.shake(activeCombo === 2 ? 0.38 : 0.22);
     }
   }
+
+  // 魔法詠唱
+  castMagic(magicKey) {
+    if (state.isPaused || state.isGameOver) return;
+    const magic = MAGIC_DATA[magicKey];
+    if (!magic) return;
+
+    if (this.mp < magic.cost) {
+      // MP不足エフェクト
+      const btn = document.getElementById(`btn-magic-${magicKey}`);
+      if (btn) {
+        btn.classList.add('shake-anim');
+        setTimeout(() => btn.classList.remove('shake-anim'), 350);
+      }
+      return;
+    }
+
+    const currentLevel = saveData.magicLevels[magicKey] || 1;
+    this.mp -= magic.cost;
+    updateStatusHUD();
+
+    soundManager.playMagicSound(magicKey, currentLevel);
+    magicSystem.cast(magicKey, currentLevel, this.group.position, this.group.rotation.y);
+  }
 }
 
 // =============================================================================
-// 9. ゾンビ（アンデッド）システム
+// 9. 魔法システム (5大属性 × 3段階レベル & 3Dエフェクト & 属性相性)
 // =============================================================================
-class Zombie {
+class MagicSystem {
   constructor() {
+    this.activeSpells = [];
+  }
+
+  cast(element, tier, originPos, playerAngle) {
+    const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerAngle);
+
+    if (element === 'explosion') {
+      const radius = tier === 3 ? 11.0 : (tier === 2 ? 6.5 : 4.2);
+      const damage = tier === 3 ? 140 : (tier === 2 ? 80 : 45);
+      const targetPos = originPos.clone().addScaledVector(forward, 4.0);
+
+      this.spawnExplosionEffect(targetPos, tier);
+      this.dealAreaDamage(targetPos, radius, damage, 'explosion', true);
+
+      if (tier >= 2) {
+        setTimeout(() => {
+          this.spawnExplosionEffect(targetPos.clone().add(new THREE.Vector3(2, 0, 2)), tier);
+          this.dealAreaDamage(targetPos, radius * 0.8, damage * 0.6, 'explosion', true);
+        }, 150);
+      }
+      if (tier === 3) {
+        cameraController.shake(0.6);
+        setTimeout(() => {
+          this.spawnExplosionEffect(originPos, tier);
+          this.dealAreaDamage(originPos, radius * 1.2, damage * 0.8, 'explosion', true);
+        }, 300);
+      }
+
+    } else if (element === 'flame') {
+      if (tier === 1) {
+        this.spawnFireball(originPos, forward);
+      } else if (tier === 2) {
+        for (let i = -1; i <= 1; i++) {
+          const pillarPos = originPos.clone().addScaledVector(forward, 3.5).add(new THREE.Vector3(i * 2.2, 0, 0));
+          this.spawnFirePillar(pillarPos);
+          this.dealAreaDamage(pillarPos, 3.2, 65, 'flame');
+        }
+      } else {
+        this.spawnInfernoVortex(originPos.clone().addScaledVector(forward, 4.0));
+      }
+
+    } else if (element === 'ice') {
+      if (tier === 1) {
+        for (let i = -1; i <= 1; i++) {
+          const angle = playerAngle + i * 0.25;
+          const dir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+          this.spawnIceSpike(originPos, dir);
+        }
+      } else if (tier === 2) {
+        this.spawnFrostNova(originPos);
+      } else {
+        this.spawnAbsoluteZero(originPos.clone().addScaledVector(forward, 4.5));
+      }
+
+    } else if (element === 'wind') {
+      if (tier === 1) {
+        this.spawnWindCutters(originPos, forward);
+      } else if (tier === 2) {
+        this.spawnGaleSlash(originPos.clone().addScaledVector(forward, 3.5));
+      } else {
+        this.spawnTyphoon(originPos);
+      }
+
+    } else if (element === 'thunder') {
+      if (tier === 1) {
+        this.spawnThunderBeam(originPos, forward);
+      } else if (tier === 2) {
+        this.spawnChainLightning(originPos);
+      } else {
+        this.spawnThorHammer(originPos);
+      }
+    }
+  }
+
+  dealAreaDamage(centerPos, radius, baseDamage, element, isHeavyKnockback = false) {
+    enemyManager.enemies.forEach((enemy) => {
+      if (enemy.isDead || enemy.isDying) return;
+      const dist = enemy.group.position.distanceTo(centerPos);
+      if (dist <= radius) {
+        const hitDir = new THREE.Vector3().subVectors(enemy.group.position, centerPos).normalize();
+        enemy.takeDamage(baseDamage, hitDir, element, isHeavyKnockback);
+      }
+    });
+  }
+
+  // --- 3D 魔法エフェクト実装 ---
+  spawnExplosionEffect(pos, tier) {
+    const geo = new THREE.SphereGeometry(tier === 3 ? 4.5 : (tier === 2 ? 2.8 : 1.8), 16, 16);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.y = 1.0;
+    scene.add(mesh);
+
+    this.activeSpells.push({
+      mesh,
+      update: (delta, self) => {
+        mesh.scale.multiplyScalar(1.0 + delta * 14.0);
+        mat.opacity -= delta * 3.5;
+        if (mat.opacity <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+    cameraController.shake(tier * 0.15);
+  }
+
+  spawnFireball(origin, dir) {
+    const geo = new THREE.SphereGeometry(0.4, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(origin).add(new THREE.Vector3(0, 1.2, 0));
+    scene.add(mesh);
+
+    const vel = dir.clone().multiplyScalar(18.0);
+    let life = 1.5;
+
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        life -= delta;
+        mesh.position.addScaledVector(vel, delta);
+        swordParticleSystem.spawnParticles(mesh.position, 'flame', true);
+
+        enemyManager.enemies.forEach((enemy) => {
+          if (!enemy.isDead && !enemy.isDying && enemy.group.position.distanceTo(mesh.position) < 1.4) {
+            enemy.takeDamage(35, dir, 'flame');
+          }
+        });
+
+        if (life <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnFirePillar(pos) {
+    const geo = new THREE.CylinderGeometry(1.2, 1.2, 6.0, 12);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.y = 3.0;
+    scene.add(mesh);
+
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        mat.opacity -= delta * 1.8;
+        mesh.rotation.y += delta * 8.0;
+        if (mat.opacity <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnInfernoVortex(pos) {
+    const geo = new THREE.TorusGeometry(3.5, 0.8, 8, 24);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.y = 1.0;
+    mesh.rotation.x = Math.PI / 2;
+    scene.add(mesh);
+
+    let life = 1.8;
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        life -= delta;
+        mesh.rotation.z += delta * 10;
+        mat.opacity = life / 1.8;
+        this.dealAreaDamage(pos, 8.5, 3.5, 'flame'); // 連続ダメージ
+        if (life <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnIceSpike(origin, dir) {
+    const geo = new THREE.ConeGeometry(0.25, 1.2, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(origin).add(new THREE.Vector3(0, 1.0, 0));
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    scene.add(mesh);
+
+    const vel = dir.clone().multiplyScalar(20.0);
+    let life = 1.2;
+
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        life -= delta;
+        mesh.position.addScaledVector(vel, delta);
+
+        enemyManager.enemies.forEach((enemy) => {
+          if (!enemy.isDead && !enemy.isDying && enemy.group.position.distanceTo(mesh.position) < 1.2) {
+            enemy.takeDamage(28, dir, 'ice');
+            enemy.freeze(1.5); // 減速
+          }
+        });
+
+        if (life <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnFrostNova(pos) {
+    const geo = new THREE.RingGeometry(0.5, 6.0, 24);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.y = 0.1;
+    mesh.rotation.x = -Math.PI / 2;
+    scene.add(mesh);
+
+    this.dealAreaDamage(pos, 6.5, 50, 'ice');
+    enemyManager.enemies.forEach(e => {
+      if (e.group.position.distanceTo(pos) < 6.5) e.freeze(3.0); // 完全停止
+    });
+
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        mat.opacity -= delta * 1.5;
+        if (mat.opacity <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnAbsoluteZero(pos) {
+    const geo = new THREE.OctahedronGeometry(3.5, 0);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x67e8f9, roughness: 0.1, metalness: 0.8, emissive: 0x0284c7, emissiveIntensity: 0.8 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos).add(new THREE.Vector3(0, 12, 0));
+    scene.add(mesh);
+
+    let fallen = false;
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        if (mesh.position.y > 1.2) {
+          mesh.position.y -= delta * 32.0;
+        } else if (!fallen) {
+          fallen = true;
+          cameraController.shake(0.5);
+          this.dealAreaDamage(pos, 9.5, 95, 'ice', true);
+          enemyManager.enemies.forEach(e => {
+            if (e.group.position.distanceTo(pos) < 9.5) e.freeze(4.5);
+          });
+        } else {
+          mesh.scale.subScalar(delta * 2.0);
+          if (mesh.scale.x <= 0.1) {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mat.dispose();
+            return false;
+          }
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnWindCutters(origin, dir) {
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => {
+        const geo = new THREE.TorusGeometry(0.6, 0.06, 4, 12, Math.PI);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(origin).add(new THREE.Vector3(0, 1.1, 0));
+        mesh.rotation.y = Math.atan2(dir.x, dir.z);
+        scene.add(mesh);
+
+        const vel = dir.clone().multiplyScalar(22.0);
+        let life = 1.0;
+
+        this.activeSpells.push({
+          mesh,
+          update: (delta) => {
+            life -= delta;
+            mesh.position.addScaledVector(vel, delta);
+            mesh.rotation.z += delta * 20;
+
+            enemyManager.enemies.forEach((enemy) => {
+              if (!enemy.isDead && !enemy.isDying && enemy.group.position.distanceTo(mesh.position) < 1.3) {
+                enemy.takeDamage(30, dir, 'wind');
+              }
+            });
+
+            if (life <= 0) {
+              scene.remove(mesh);
+              mesh.geometry.dispose();
+              mat.dispose();
+              return false;
+            }
+            return true;
+          }
+        });
+      }, i * 80);
+    }
+  }
+
+  spawnGaleSlash(pos) {
+    const geo = new THREE.CylinderGeometry(0.5, 2.5, 4.5, 12, 1, true);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.y = 2.25;
+    scene.add(mesh);
+
+    let life = 1.6;
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        life -= delta;
+        mesh.rotation.y += delta * 16.0;
+        mat.opacity = life / 1.6;
+
+        // 敵を引き寄せて連続ダメージ
+        enemyManager.enemies.forEach(e => {
+          if (!e.isDead && !e.isDying && e.group.position.distanceTo(pos) < 6.5) {
+            const pullDir = new THREE.Vector3().subVectors(pos, e.group.position).normalize();
+            e.group.position.addScaledVector(pullDir, delta * 4.0);
+            e.takeDamage(2.5, pullDir, 'wind');
+          }
+        });
+
+        if (life <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnTyphoon(pos) {
+    const geo = new THREE.CylinderGeometry(1.0, 7.0, 8.0, 16, 1, true);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    mesh.position.y = 4.0;
+    scene.add(mesh);
+
+    this.dealAreaDamage(pos, 10.0, 90, 'wind', true);
+    cameraController.shake(0.4);
+
+    let life = 2.0;
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        life -= delta;
+        mesh.rotation.y -= delta * 20.0;
+        mat.opacity = life / 2.0;
+        if (life <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnThunderBeam(origin, dir) {
+    const length = 20;
+    const geo = new THREE.CylinderGeometry(0.15, 0.15, length, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xfef08a, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    const midPos = origin.clone().addScaledVector(dir, length / 2);
+    mesh.position.copy(midPos);
+    mesh.position.y = 1.1;
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    scene.add(mesh);
+
+    this.dealAreaDamage(midPos, length / 2, 38, 'thunder');
+    cameraController.shake(0.2);
+
+    this.activeSpells.push({
+      mesh,
+      update: (delta) => {
+        mesh.scale.x -= delta * 6;
+        mesh.scale.z -= delta * 6;
+        if (mesh.scale.x <= 0) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnChainLightning(origin) {
+    let targets = enemyManager.enemies.filter(e => !e.isDead && !e.isDying && e.group.position.distanceTo(origin) < 14.0).slice(0, 5);
+    targets.forEach((target, idx) => {
+      setTimeout(() => {
+        const geo = new THREE.BoxGeometry(0.12, 4.0, 0.12);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xeab308 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(target.group.position);
+        mesh.position.y = 2.0;
+        scene.add(mesh);
+
+        target.takeDamage(60, new THREE.Vector3(0, 0, 0), 'thunder');
+        soundManager.playWeakHit();
+
+        setTimeout(() => {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+        }, 120);
+      }, idx * 100);
+    });
+  }
+
+  spawnThorHammer(pos) {
+    for (let i = 0; i < 6; i++) {
+      setTimeout(() => {
+        const dropPos = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 16, 0, (Math.random() - 0.5) * 16));
+        const geo = new THREE.CylinderGeometry(0.3, 0.3, 16, 6);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(dropPos);
+        mesh.position.y = 8;
+        scene.add(mesh);
+
+        this.dealAreaDamage(dropPos, 4.5, 100, 'thunder', true);
+        cameraController.shake(0.35);
+
+        setTimeout(() => {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          mat.dispose();
+        }, 180);
+      }, i * 90);
+    }
+  }
+
+  update(delta) {
+    for (let i = this.activeSpells.length - 1; i >= 0; i--) {
+      const spell = this.activeSpells[i];
+      if (!spell.update(delta, spell)) {
+        this.activeSpells.splice(i, 1);
+      }
+    }
+  }
+}
+
+// =============================================================================
+// 10. 敵モンスター基底クラス ＆ 頭上HPバー ＆ 5種モンスター
+// =============================================================================
+class Enemy {
+  constructor(type, maxHp, speed, attackDmg, weakness, resistance, coinReward) {
+    this.type = type;
+    this.maxHp = maxHp;
+    this.hp = maxHp;
+    this.speed = speed;
+    this.baseSpeed = speed;
+    this.attackDmg = attackDmg;
+    this.weakness = weakness;       // 弱点 (x1.75)
+    this.resistance = resistance;   // 耐性 (x0.5)
+    this.coinReward = coinReward;
+
     this.group = new THREE.Group();
     this.isDead = false;
     this.isDying = false;
@@ -2003,146 +2517,84 @@ class Zombie {
     this.knockbackVelocity = new THREE.Vector3();
     this.angularVelocity = new THREE.Vector3();
 
+    this.attackTimer = Math.random() * 1.5;
+    this.attackCooldown = 2.2;
+    this.attackRange = 1.4;
+    this.freezeTimer = 0;
+
     this.walkCycle = Math.random() * 10;
-    this.speed = CONFIG.zombieSpeed * (0.85 + Math.random() * 0.3);
 
-    this.hasCustomModel = false;
-    this.customModel = null;
-    this.mixer = null;
-    this.actions = {};
-
-    this.defaultMeshGroup = new THREE.Group();
-    this.group.add(this.defaultMeshGroup);
-    this.buildDefaultMesh();
-
-    if (MODEL_CONFIG.zombie.url) {
-      this.loadCustomModel(MODEL_CONFIG.zombie.url);
-    }
+    this.createHpBarSprite();
   }
 
-  buildDefaultMesh() {
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 });
-    const darkSkinMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9 });
-    const ragMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
-    const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 });
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-    const clawMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3, metalness: 0.8 });
+  createHpBarSprite() {
+    this.hpCanvas = document.createElement('canvas');
+    this.hpCanvas.width = 128;
+    this.hpCanvas.height = 32;
+    this.hpCtx = this.hpCanvas.getContext('2d');
 
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.78, 0.42), skinMat);
-    this.body.position.y = 1.05;
-    this.body.castShadow = true;
-    this.defaultMeshGroup.add(this.body);
+    this.hpTex = new THREE.CanvasTexture(this.hpCanvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: this.hpTex, transparent: true });
+    this.hpSprite = new THREE.Sprite(spriteMat);
+    this.hpSprite.scale.set(1.4, 0.35, 1.0);
+    this.hpSprite.position.y = 2.4;
+    this.group.add(this.hpSprite);
 
-    const ragVest = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.46), ragMat);
-    ragVest.position.set(0, 0.1, 0);
-    this.body.add(ragVest);
-
-    for (let r = 0; r < 3; r++) {
-      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.12), boneMat);
-      rib.position.set(0, -0.05 - r * 0.1, 0.2);
-      this.body.add(rib);
-    }
-
-    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
-    this.head.position.set(0, 0.62, 0);
-    this.head.castShadow = true;
-    this.body.add(this.head);
-
-    const socketGeo = new THREE.BoxGeometry(0.12, 0.12, 0.04);
-    const socketMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
-    const lSocket = new THREE.Mesh(socketGeo, socketMat);
-    lSocket.position.set(-0.12, 0.06, 0.22);
-    this.head.add(lSocket);
-    const rSocket = new THREE.Mesh(socketGeo, socketMat);
-    rSocket.position.set(0.12, 0.06, 0.22);
-    this.head.add(rSocket);
-
-    const eyeGeo = new THREE.SphereGeometry(0.045, 6, 6);
-    this.leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    this.leftEye.position.set(-0.12, 0.06, 0.23);
-    this.head.add(this.leftEye);
-
-    this.rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    this.rightEye.position.set(0.12, 0.06, 0.23);
-    this.head.add(this.rightEye);
-
-    for (let t = 0; t < 4; t++) {
-      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 4), boneMat);
-      tooth.position.set(-0.12 + t * 0.08, -0.14, 0.22);
-      tooth.rotation.x = Math.PI;
-      this.head.add(tooth);
-    }
-
-    const armGeo = new THREE.BoxGeometry(0.18, 0.18, 0.65);
-
-    this.leftArm = new THREE.Mesh(armGeo, skinMat);
-    this.leftArm.position.set(-0.44, 0.2, 0.28);
-    this.leftArm.rotation.x = 0.15;
-    this.leftArm.castShadow = true;
-    this.body.add(this.leftArm);
-
-    for (let c = 0; c < 3; c++) {
-      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), clawMat);
-      claw.position.set(-0.06 + c * 0.06, 0, 0.38);
-      claw.rotation.x = Math.PI / 2;
-      this.leftArm.add(claw);
-    }
-
-    this.rightArm = new THREE.Mesh(armGeo, darkSkinMat);
-    this.rightArm.position.set(0.44, 0.15, 0.32);
-    this.rightArm.rotation.x = 0.3;
-    this.rightArm.castShadow = true;
-    this.body.add(this.rightArm);
-
-    for (let c = 0; c < 3; c++) {
-      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), clawMat);
-      claw.position.set(-0.06 + c * 0.06, 0, 0.38);
-      claw.rotation.x = Math.PI / 2;
-      this.rightArm.add(claw);
-    }
-
-    const legGeo = new THREE.BoxGeometry(0.24, 0.68, 0.24);
-
-    this.leftLeg = new THREE.Mesh(legGeo, ragMat);
-    this.leftLeg.position.set(-0.18, 0.35, 0);
-    this.leftLeg.castShadow = true;
-    this.defaultMeshGroup.add(this.leftLeg);
-
-    this.rightLeg = new THREE.Mesh(legGeo, skinMat);
-    this.rightLeg.position.set(0.18, 0.35, 0);
-    this.rightLeg.castShadow = true;
-    this.defaultMeshGroup.add(this.rightLeg);
+    this.updateHpBar();
   }
 
-  async loadCustomModel(url) {
-    const data = await modelLoader.loadGLTF(url);
-    if (!data) return;
+  updateHpBar() {
+    const ctx = this.hpCtx;
+    ctx.clearRect(0, 0, 128, 32);
 
-    this.customModel = data.scene;
-    const cfg = MODEL_CONFIG.zombie;
-    if (cfg.scale) this.customModel.scale.set(cfg.scale, cfg.scale, cfg.scale);
-    if (cfg.positionOffset) this.customModel.position.copy(cfg.positionOffset);
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(4, 4, 120, 24);
 
-    this.group.add(this.customModel);
-    this.defaultMeshGroup.visible = false;
-    this.hasCustomModel = true;
+    // HPゲージ
+    const ratio = Math.max(0, this.hp / this.maxHp);
+    ctx.fillStyle = ratio > 0.5 ? '#22c55e' : (ratio > 0.25 ? '#eab308' : '#ef4444');
+    ctx.fillRect(6, 6, Math.floor(116 * ratio), 20);
 
-    if (data.animations && data.animations.length > 0) {
-      this.mixer = new THREE.AnimationMixer(this.customModel);
-      const walkClip = data.animations.find(a => a.name.toLowerCase().includes('walk') || a.name.toLowerCase().includes('run')) || data.animations[0];
-      const action = this.mixer.clipAction(walkClip);
-      action.play();
-    }
+    // 弱点バッジテキスト
+    const weakIcon = this.weakness === 'flame' ? '🔥' : (this.weakness === 'thunder' ? '⚡' : (this.weakness === 'explosion' ? '💥' : (this.weakness === 'ice' ? '❄️' : '🌪️')));
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillStyle = '#fef08a';
+    ctx.fillText(`弱点:${weakIcon}`, 8, 22);
+
+    this.hpTex.needsUpdate = true;
   }
 
-  spawn(x, z) {
-    this.group.position.set(x, 0, z);
-    this.group.rotation.set(0, 0, 0);
-    this.isDead = false;
-    this.isDying = false;
-    this.dyingTimer = 0;
-    this.group.visible = true;
-    scene.add(this.group);
+  freeze(duration) {
+    this.freezeTimer = duration;
+  }
+
+  takeDamage(amount, hitDir, element = null, isHeavyKnockback = false) {
+    if (this.isDead || this.isDying) return;
+
+    let finalDamage = amount;
+    let affinityType = 'normal';
+
+    if (element) {
+      if (element === this.weakness) {
+        finalDamage = Math.floor(amount * 1.75);
+        affinityType = 'weak';
+        soundManager.playWeakHit();
+      } else if (element === this.resistance) {
+        finalDamage = Math.max(1, Math.floor(amount * 0.5));
+        affinityType = 'resist';
+      }
+    }
+
+    this.hp = Math.max(0, this.hp - finalDamage);
+    this.updateHpBar();
+
+    // ダメージポップアップ
+    showDamagePopup(this.group.position, finalDamage, affinityType);
+
+    if (this.hp <= 0) {
+      this.die(hitDir, isHeavyKnockback);
+    }
   }
 
   update(delta, playerPos) {
@@ -2153,35 +2605,40 @@ class Zombie {
       return;
     }
 
+    if (this.freezeTimer > 0) {
+      this.freezeTimer -= delta;
+      return; // 凍結中
+    }
+
     const dir = new THREE.Vector3().subVectors(playerPos, this.group.position);
     dir.y = 0;
     const dist = dir.length();
 
-    if (dist > 0.8) {
+    if (dist > this.attackRange) {
       dir.normalize();
-      this.group.position.x += dir.x * this.speed * delta;
-      this.group.position.z += dir.z * this.speed * delta;
-
-      const angle = Math.atan2(dir.x, dir.z);
-      this.group.rotation.y = angle;
-
-      if (this.mixer) {
-        this.mixer.update(delta);
-      } else {
-        this.walkCycle += delta * 5;
-        this.leftLeg.rotation.x = Math.sin(this.walkCycle) * 0.45;
-        this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * 0.45;
-        this.body.rotation.z = Math.sin(this.walkCycle * 0.5) * 0.14;
-        this.head.rotation.y = Math.sin(this.walkCycle * 0.7) * 0.18;
-        this.leftArm.rotation.x = 0.15 + Math.sin(this.walkCycle) * 0.2;
-        this.rightArm.rotation.x = 0.3 - Math.sin(this.walkCycle) * 0.2;
+      this.group.position.addScaledVector(dir, this.speed * delta);
+      this.group.rotation.y = Math.atan2(dir.x, dir.z);
+      this.updateWalkAnimation(delta);
+    } else {
+      // 攻撃処理
+      this.attackTimer += delta;
+      if (this.attackTimer >= this.attackCooldown) {
+        this.performAttack(playerPos);
+        this.attackTimer = 0;
       }
     }
   }
 
+  performAttack(playerPos) {
+    player.takeDamage(this.attackDmg, this.group.position);
+  }
+
+  updateWalkAnimation(delta) {
+    this.walkCycle += delta * 6;
+  }
+
   updateDying(delta) {
     this.dyingTimer += delta;
-
     this.knockbackVelocity.y -= 14.0 * delta;
     this.group.position.addScaledVector(this.knockbackVelocity, delta);
 
@@ -2200,95 +2657,366 @@ class Zombie {
     }
 
     if (this.dyingTimer > 0.7) {
-      const fadeProgress = (this.dyingTimer - 0.7) / (this.maxDyingDuration - 0.7);
-      const scale = Math.max(1.0 - fadeProgress, 0.01);
+      const fade = (this.dyingTimer - 0.7) / (this.maxDyingDuration - 0.7);
+      const scale = Math.max(1.0 - fade, 0.01);
       this.group.scale.set(scale, scale, scale);
     }
 
     if (this.dyingTimer >= this.maxDyingDuration) {
       this.isDead = true;
       scene.remove(this.group);
+      if (this.isBoss) hideBossHpBar();
     }
   }
 
-  die(hitDir, isFinisher = false) {
+  die(hitDir, isHeavyKnockback = false) {
     if (this.isDying || this.isDead) return;
 
     this.isDying = true;
     this.dyingTimer = 0;
 
-    soundManager.playZombieDeathScream();
+    soundManager.playZombieDeathScream(this.type);
 
-    const blowForce = isFinisher ? (11.0 + Math.random() * 3.0) : (7.5 + Math.random() * 2.5);
+    const blowForce = isHeavyKnockback ? (12.0 + Math.random() * 4.0) : (7.5 + Math.random() * 2.5);
     this.knockbackVelocity.set(
       hitDir.x * blowForce,
-      isFinisher ? 6.0 : (4.5 + Math.random() * 2.0),
+      isHeavyKnockback ? 6.5 : (4.5 + Math.random() * 2.0),
       hitDir.z * blowForce
     );
 
     this.angularVelocity.set(
-      (Math.random() - 0.5) * (isFinisher ? 12.0 : 8.0),
+      (Math.random() - 0.5) * (isHeavyKnockback ? 14.0 : 8.0),
       0,
-      (Math.random() - 0.5) * (isFinisher ? 12.0 : 8.0)
+      (Math.random() - 0.5) * (isHeavyKnockback ? 14.0 : 8.0)
     );
-
-    this.head.rotation.x = -0.6;
-    this.leftArm.rotation.x = -0.8;
-    this.rightArm.rotation.x = -0.8;
 
     particleSystem.spawnDeathParticles(this.group.position, hitDir);
     particleSystem.spawnSlashSparks(this.group.position);
 
     state.kills++;
-    state.coins += 10;
+    state.coins += this.coinReward;
     saveData.coins = state.coins;
     SaveManager.save(saveData);
 
-    updateHUD(this.group.position, isFinisher ? 'FINISH' : true);
+    updateHUD(this.group.position, `+${this.coinReward}🪙`);
   }
 }
 
-class ZombieManager {
+// 1. ゾンビ (Zombie: 弱点: 炎, 耐性: 氷)
+class ZombieEnemy extends Enemy {
   constructor() {
-    this.zombies = [];
+    super('zombie', 35, 2.2, 10, 'flame', 'ice', 10);
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 });
+    const darkSkinMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9 });
+    const ragMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+
+    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.78, 0.42), skinMat);
+    this.body.position.y = 1.05;
+    this.body.castShadow = true;
+    this.group.add(this.body);
+
+    const ragVest = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.46), ragMat);
+    ragVest.position.set(0, 0.1, 0);
+    this.body.add(ragVest);
+
+    for (let r = 0; r < 3; r++) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.12), boneMat);
+      rib.position.set(0, -0.05 - r * 0.1, 0.2);
+      this.body.add(rib);
+    }
+
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
+    this.head.position.set(0, 0.62, 0);
+    this.head.castShadow = true;
+    this.body.add(this.head);
+
+    const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), eyeMat);
+    lEye.position.set(-0.12, 0.06, 0.23);
+    this.head.add(lEye);
+    const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), eyeMat);
+    rEye.position.set(0.12, 0.06, 0.23);
+    this.head.add(rEye);
+
+    const armGeo = new THREE.BoxGeometry(0.18, 0.18, 0.65);
+    this.leftArm = new THREE.Mesh(armGeo, skinMat);
+    this.leftArm.position.set(-0.44, 0.2, 0.28);
+    this.body.add(this.leftArm);
+
+    this.rightArm = new THREE.Mesh(armGeo, darkSkinMat);
+    this.rightArm.position.set(0.44, 0.15, 0.32);
+    this.body.add(this.rightArm);
+
+    this.leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.68, 0.24), ragMat);
+    this.leftLeg.position.set(-0.18, 0.35, 0);
+    this.group.add(this.leftLeg);
+
+    this.rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.68, 0.24), skinMat);
+    this.rightLeg.position.set(0.18, 0.35, 0);
+    this.group.add(this.rightLeg);
+  }
+
+  updateWalkAnimation(delta) {
+    super.updateWalkAnimation(delta);
+    this.leftLeg.rotation.x = Math.sin(this.walkCycle) * 0.45;
+    this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * 0.45;
+    this.leftArm.rotation.x = 0.15 + Math.sin(this.walkCycle) * 0.2;
+    this.rightArm.rotation.x = 0.3 - Math.sin(this.walkCycle) * 0.2;
+  }
+}
+
+// 2. お化け / ゴースト (Ghost: 弱点: 雷, 耐性: 風)
+class GhostEnemy extends Enemy {
+  constructor() {
+    super('ghost', 25, 3.2, 12, 'thunder', 'wind', 15);
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    const ghostMat = new THREE.MeshStandardMaterial({
+      color: 0xe0f2fe,
+      roughness: 0.1,
+      transparent: true,
+      opacity: 0.75,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.4,
+    });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9 });
+
+    this.body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 16), ghostMat);
+    this.body.position.y = 1.3;
+    this.body.rotation.x = Math.PI;
+    this.group.add(this.body);
+
+    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), ghostMat);
+    this.head.position.y = 1.7;
+    this.group.add(this.head);
+
+    const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+    lEye.position.set(-0.14, 1.75, 0.35);
+    this.group.add(lEye);
+    const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+    rEye.position.set(0.14, 1.75, 0.35);
+    this.group.add(rEye);
+  }
+
+  updateWalkAnimation(delta) {
+    super.updateWalkAnimation(delta);
+    this.group.position.y = Math.sin(this.walkCycle * 2) * 0.25;
+    this.body.rotation.z = Math.sin(this.walkCycle) * 0.15;
+  }
+}
+
+// 3. ゴブリン (Goblin: 弱点: 爆発, 耐性: 雷)
+class GoblinEnemy extends Enemy {
+  constructor() {
+    super('goblin', 30, 3.6, 15, 'explosion', 'thunder', 15);
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.7 });
+    const clothMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8 });
+
+    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.35), clothMat);
+    this.body.position.y = 0.75;
+    this.group.add(this.body);
+
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.38), skinMat);
+    this.head.position.set(0, 0.45, 0.05);
+    this.body.add(this.head);
+
+    const earGeo = new THREE.ConeGeometry(0.08, 0.28, 4);
+    const lEar = new THREE.Mesh(earGeo, skinMat);
+    lEar.position.set(-0.25, 0.1, -0.05);
+    lEar.rotation.z = 1.2;
+    this.head.add(lEar);
+    const rEar = new THREE.Mesh(earGeo, skinMat);
+    rEar.position.set(0.25, 0.1, -0.05);
+    rEar.rotation.z = -1.2;
+    this.head.add(rEar);
+
+    // 木製棍棒
+    const club = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.04, 0.8, 6), woodMat);
+    club.position.set(0.35, 0.1, 0.2);
+    club.rotation.x = Math.PI / 3;
+    this.body.add(club);
+  }
+}
+
+// 4. キングゴブリン (King Goblin: 中ボス, 弱点: 氷, 耐性: 爆発)
+class KingGoblinEnemy extends Enemy {
+  constructor() {
+    super('king_goblin', 200, 1.8, 25, 'ice', 'explosion', 60);
+    this.isBoss = true;
+    this.attackRange = 2.2;
+    this.hpSprite.position.y = 4.2;
+    this.hpSprite.scale.set(2.4, 0.5, 1.0);
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 0.7 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.2 });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.8 });
+
+    this.body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8, 1.2), skinMat);
+    this.body.position.y = 2.0;
+    this.body.castShadow = true;
+    this.group.add(this.body);
+
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 1.0), skinMat);
+    this.head.position.set(0, 1.3, 0.1);
+    this.body.add(this.head);
+
+    // 黄金の王冠
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.55, 0.35, 8), goldMat);
+    crown.position.set(0, 0.6, 0);
+    this.head.add(crown);
+
+    // 巨大鉄棍棒
+    const club = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.12, 2.4, 8), ironMat);
+    club.position.set(1.1, 0.2, 0.6);
+    club.rotation.x = Math.PI / 4;
+    this.body.add(club);
+  }
+}
+
+// 5. デーモン (Demon: 大ボス, 弱点: 風, 耐性: 炎)
+class DemonEnemy extends Enemy {
+  constructor() {
+    super('demon', 350, 2.0, 35, 'wind', 'flame', 120);
+    this.isBoss = true;
+    this.attackRange = 2.5;
+    this.hpSprite.position.y = 5.0;
+    this.hpSprite.scale.set(2.8, 0.6, 1.0);
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.4, emissive: 0x7f1d1d, emissiveIntensity: 0.3 });
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
+    const wingMat = new THREE.MeshBasicMaterial({ color: 0x18181b, side: THREE.DoubleSide });
+
+    this.body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, 1.4), skinMat);
+    this.body.position.y = 2.5;
+    this.body.castShadow = true;
+    this.group.add(this.body);
+
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), skinMat);
+    this.head.position.set(0, 1.5, 0.1);
+    this.body.add(this.head);
+
+    // 巨大な角
+    const lHorn = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.2, 6), hornMat);
+    lHorn.position.set(-0.6, 0.8, 0);
+    lHorn.rotation.z = 0.5;
+    this.head.add(lHorn);
+    const rHorn = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.2, 6), hornMat);
+    rHorn.position.set(0.6, 0.8, 0);
+    rHorn.rotation.z = -0.5;
+    this.head.add(rHorn);
+
+    // 黒い翼
+    const wingGeo = new THREE.BoxGeometry(2.2, 1.6, 0.08);
+    this.lWing = new THREE.Mesh(wingGeo, wingMat);
+    this.lWing.position.set(-1.6, 0.5, -0.7);
+    this.lWing.rotation.y = 0.4;
+    this.body.add(this.lWing);
+
+    this.rWing = new THREE.Mesh(wingGeo, wingMat);
+    this.rWing.position.set(1.6, 0.5, -0.7);
+    this.rWing.rotation.y = -0.4;
+    this.body.add(this.rWing);
+  }
+}
+
+// 敵スポーン管理
+class EnemyManager {
+  constructor() {
+    this.enemies = [];
     this.spawnTimer = 0;
+    this.nextBossKillThreshold = 12;
   }
 
   update(delta, playerPos) {
+    if (state.isGameOver) return;
+
     this.spawnTimer += delta;
-    if (this.spawnTimer >= CONFIG.spawnInterval && this.getActiveCount() < CONFIG.zombieMaxCount) {
+    if (this.spawnTimer >= CONFIG.spawnInterval && this.getActiveCount() < CONFIG.maxRegularEnemies) {
       this.spawnTimer = 0;
-      this.spawnOne(playerPos);
+      this.spawnRandomEnemy(playerPos);
     }
 
-    for (let i = this.zombies.length - 1; i >= 0; i--) {
-      const z = this.zombies[i];
-      if (z.isDead) {
-        this.zombies.splice(i, 1);
+    // ボス出現判定
+    if (state.kills >= this.nextBossKillThreshold && !this.hasActiveBoss()) {
+      if (state.kills % 24 >= 12) {
+        this.spawnBoss('king_goblin', playerPos);
       } else {
-        z.update(delta, playerPos);
+        this.spawnBoss('demon', playerPos);
+      }
+      this.nextBossKillThreshold += 15;
+    }
+
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (e.isDead) {
+        this.enemies.splice(i, 1);
+      } else {
+        e.update(delta, playerPos);
+        if (e.isBoss) updateBossHpBar(e);
       }
     }
   }
 
   getActiveCount() {
-    return this.zombies.filter(z => !z.isDead && !z.isDying).length;
+    return this.enemies.filter(e => !e.isDead && !e.isDying && !e.isBoss).length;
   }
 
-  spawnOne(playerPos) {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 12 + Math.random() * 8;
-    const x = playerPos.x + Math.cos(angle) * distance;
-    const z = playerPos.z + Math.sin(angle) * distance;
+  hasActiveBoss() {
+    return this.enemies.some(e => e.isBoss && !e.isDead && !e.isDying);
+  }
 
-    const zombie = new Zombie();
-    zombie.spawn(x, z);
-    this.zombies.push(zombie);
+  spawnRandomEnemy(playerPos) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 14 + Math.random() * 8;
+    const x = playerPos.x + Math.cos(angle) * dist;
+    const z = playerPos.z + Math.sin(angle) * dist;
+
+    const rand = Math.random();
+    let enemy;
+    if (rand < 0.45) enemy = new ZombieEnemy();
+    else if (rand < 0.75) enemy = new GhostEnemy();
+    else enemy = new GoblinEnemy();
+
+    enemy.group.position.set(x, 0, z);
+    scene.add(enemy.group);
+    this.enemies.push(enemy);
+  }
+
+  spawnBoss(type, playerPos) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 16.0;
+    const x = playerPos.x + Math.cos(angle) * dist;
+    const z = playerPos.z + Math.sin(angle) * dist;
+
+    const boss = (type === 'king_goblin') ? new KingGoblinEnemy() : new DemonEnemy();
+    boss.group.position.set(x, 0, z);
+    scene.add(boss.group);
+    this.enemies.push(boss);
+
+    showBossHpBar(boss);
   }
 }
 
 // =============================================================================
-// 10. パーティクルシステム
+// 11. パーティクルシステム
 // =============================================================================
 class ParticleSystem {
   constructor() {
@@ -2380,53 +3108,6 @@ class ParticleSystem {
     });
   }
 
-  spawnMagicHitParticles(pos, bulletType = 'magic') {
-    const count = 14;
-    let color1 = 0xf472b6;
-    let color2 = 0xfde047;
-
-    if (bulletType === 'rock') {
-      color1 = 0x78716c; color2 = 0xa8a29e;
-    } else if (bulletType === 'fireball') {
-      color1 = 0xef4444; color2 = 0xf97316;
-    } else if (bulletType === 'mud') {
-      color1 = 0xf43f5e; color2 = 0x854d0e;
-    } else if (bulletType === 'bone') {
-      color1 = 0xf8fafc; color2 = 0xfbbf24;
-    } else if (bulletType === 'laser') {
-      color1 = 0x38bdf8; color2 = 0xfde047;
-    } else if (bulletType === 'rainbow') {
-      color1 = 0xa855f7; color2 = 0x38bdf8;
-    }
-
-    const mat1 = new THREE.MeshBasicMaterial({ color: color1 });
-    const mat2 = new THREE.MeshBasicMaterial({ color: color2 });
-
-    for (let i = 0; i < count; i++) {
-      const mat = (i % 2 === 0) ? mat1 : mat2;
-      const mesh = new THREE.Mesh(this.particleGeo, mat);
-      mesh.position.copy(pos);
-      mesh.position.y += 0.8;
-
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 3.0 + Math.random() * 3.5;
-      const vel = new THREE.Vector3(
-        Math.cos(angle) * speed,
-        Math.random() * 4.0 + 1.0,
-        Math.sin(angle) * speed
-      );
-
-      scene.add(mesh);
-      this.particles.push({
-        mesh,
-        vel,
-        rotSpeed: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12),
-        life: 0.75,
-        maxLife: 0.75,
-      });
-    }
-  }
-
   update(delta) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -2458,11 +3139,11 @@ class ParticleSystem {
 }
 
 // =============================================================================
-// 11. 固有弾丸システム (MagicProjectile) & ペットシステム
+// 12. 固有弾丸システム & ペットシステム
 // =============================================================================
 class MagicProjectile {
-  constructor(startPos, targetZombie, bulletType = 'magic', speed = 16.0) {
-    this.target = targetZombie;
+  constructor(startPos, targetEnemy, bulletType = 'magic', speed = 16.0) {
+    this.target = targetEnemy;
     this.bulletType = bulletType;
     this.isDead = false;
     this.life = 2.5;
@@ -2470,91 +3151,19 @@ class MagicProjectile {
     this.group = new THREE.Group();
     this.group.position.copy(startPos);
 
-    this.buildBulletMesh();
+    const geo = new THREE.SphereGeometry(0.24, 10, 10);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf472b6 });
+    this.mesh = new THREE.Mesh(geo, mat);
+    this.group.add(this.mesh);
 
-    this.targetLastPos = targetZombie.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+    this.targetLastPos = targetEnemy.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
     this.velocity = new THREE.Vector3().subVectors(this.targetLastPos, startPos).normalize().multiplyScalar(speed);
 
     scene.add(this.group);
   }
 
-  buildBulletMesh() {
-    if (this.bulletType === 'rock') {
-      const geo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.9 });
-      this.mesh = new THREE.Mesh(geo, mat);
-      this.group.add(this.mesh);
-    } else if (this.bulletType === 'fireball') {
-      const geo = new THREE.SphereGeometry(0.24, 10, 10);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      this.core = new THREE.Mesh(geo, mat);
-      this.group.add(this.core);
-
-      const auraGeo = new THREE.SphereGeometry(0.38, 10, 10);
-      const auraMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
-      this.glow = new THREE.Mesh(auraGeo, auraMat);
-      this.group.add(this.glow);
-    } else if (this.bulletType === 'bone') {
-      const shaftGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.45, 6);
-      const mat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
-      this.bone = new THREE.Mesh(shaftGeo, mat);
-      this.bone.rotation.z = Math.PI / 2;
-      this.group.add(this.bone);
-
-      const capGeo = new THREE.SphereGeometry(0.08, 6, 6);
-      const c1 = new THREE.Mesh(capGeo, mat);
-      c1.position.set(-0.22, 0.05, 0);
-      this.group.add(c1);
-      const c2 = new THREE.Mesh(capGeo, mat);
-      c2.position.set(-0.22, -0.05, 0);
-      this.group.add(c2);
-      const c3 = new THREE.Mesh(capGeo, mat);
-      c3.position.set(0.22, 0.05, 0);
-      this.group.add(c3);
-      const c4 = new THREE.Mesh(capGeo, mat);
-      c4.position.set(0.22, -0.05, 0);
-      this.group.add(c4);
-    } else if (this.bulletType === 'laser') {
-      const geo = new THREE.BoxGeometry(0.12, 0.12, 0.75);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-      this.mesh = new THREE.Mesh(geo, mat);
-      this.group.add(this.mesh);
-    } else if (this.bulletType === 'rainbow') {
-      const geo = new THREE.OctahedronGeometry(0.24, 0);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
-      this.mesh = new THREE.Mesh(geo, mat);
-      this.group.add(this.mesh);
-
-      const auraGeo = new THREE.SphereGeometry(0.38, 8, 8);
-      const auraMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending });
-      this.glow = new THREE.Mesh(auraGeo, auraMat);
-      this.group.add(this.glow);
-    } else if (this.bulletType === 'mud') {
-      const geo = new THREE.SphereGeometry(0.22, 8, 8);
-      const mat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.5 });
-      this.mesh = new THREE.Mesh(geo, mat);
-      this.group.add(this.mesh);
-    } else {
-      const coreGeo = new THREE.SphereGeometry(0.18, 12, 12);
-      const coreMat = new THREE.MeshBasicMaterial({ color: 0xfdf2f8 });
-      this.core = new THREE.Mesh(coreGeo, coreMat);
-      this.group.add(this.core);
-
-      const glowGeo = new THREE.SphereGeometry(0.32, 12, 12);
-      const glowMat = new THREE.MeshBasicMaterial({
-        color: 0xf472b6,
-        transparent: true,
-        opacity: 0.65,
-        blending: THREE.AdditiveBlending,
-      });
-      this.glow = new THREE.Mesh(glowGeo, glowMat);
-      this.group.add(this.glow);
-    }
-  }
-
   update(delta) {
     if (this.isDead) return;
-
     this.life -= delta;
     if (this.life <= 0) {
       this.destroy();
@@ -2570,24 +3179,12 @@ class MagicProjectile {
 
     this.group.position.addScaledVector(this.velocity, delta);
 
-    this.group.rotation.x += delta * 14;
-    this.group.rotation.y += delta * 16;
-
-    if (this.glow) {
-      const pulse = 1.0 + Math.sin(Date.now() * 0.02) * 0.2;
-      this.glow.scale.set(pulse, pulse, pulse);
-    }
-
-    zombieManager.zombies.forEach((zombie) => {
-      if (zombie.isDead || zombie.isDying || this.isDead) return;
-
-      const zCenter = zombie.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
-      const dist = this.group.position.distanceTo(zCenter);
-
-      if (dist < 0.9) {
+    enemyManager.enemies.forEach((enemy) => {
+      if (enemy.isDead || enemy.isDying || this.isDead) return;
+      const zCenter = enemy.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+      if (this.group.position.distanceTo(zCenter) < 1.0) {
         const hitDir = this.velocity.clone().normalize();
-        zombie.die(hitDir);
-        particleSystem.spawnMagicHitParticles(this.group.position, this.bulletType);
+        enemy.takeDamage(20, hitDir);
         this.destroy();
       }
     });
@@ -2604,25 +3201,21 @@ class ProjectileManager {
     this.projectiles = [];
   }
 
-  shoot(startPos, targetZombie, bulletType, speed) {
+  shoot(startPos, targetEnemy, bulletType, speed) {
     soundManager.playShoot(bulletType);
-    const proj = new MagicProjectile(startPos, targetZombie, bulletType, speed);
+    const proj = new MagicProjectile(startPos, targetEnemy, bulletType, speed);
     this.projectiles.push(proj);
   }
 
   update(delta) {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
-      if (p.isDead) {
-        this.projectiles.splice(i, 1);
-      } else {
-        p.update(delta);
-      }
+      if (p.isDead) this.projectiles.splice(i, 1);
+      else p.update(delta);
     }
   }
 }
 
-// 固有ペットクラス (全7種)
 class BuddyPet {
   constructor(player, petType = 'fairy', slotIndex = 0) {
     this.player = player;
@@ -2638,287 +3231,18 @@ class BuddyPet {
     this.hoverTime = Math.random() * 10;
     this.attackTimer = Math.random() * 1.5;
     this.attackCooldown = this.petData.attackInterval || 3.0;
-    this.shootAnimationTimer = 0;
 
     this.buildMesh();
   }
 
   buildMesh() {
-    while (this.group.children.length > 0) {
-      const child = this.group.children[0];
-      this.group.remove(child);
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-    }
-
-    if (this.petType === 'gorilla') {
-      const furMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.8 });
-      const skinMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.6 });
-      const silverMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.5 });
-
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.5), furMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      const chest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.35, 0.1), skinMat);
-      chest.position.set(0, 0.05, 0.22);
-      this.body.add(chest);
-
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.08), silverMat);
-      back.position.set(0, 0, -0.22);
-      this.body.add(back);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.32, 0.35), furMat);
-      head.position.set(0, 0.38, 0.1);
-      this.body.add(head);
-
-      const face = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.08), skinMat);
-      face.position.set(0, -0.04, 0.16);
-      head.add(face);
-
-      const armGeo = new THREE.BoxGeometry(0.2, 0.5, 0.2);
-      const lArm = new THREE.Mesh(armGeo, furMat);
-      lArm.position.set(-0.35, -0.05, 0.1);
-      this.body.add(lArm);
-      const rArm = new THREE.Mesh(armGeo, furMat);
-      rArm.position.set(0.35, -0.05, 0.1);
-      this.body.add(rArm);
-
-    } else if (this.petType === 'lion') {
-      const furMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 });
-      const maneMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 });
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.42, 0.55), furMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      const mane = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.25), maneMat);
-      mane.position.set(0, 0.15, 0.22);
-      this.body.add(mane);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.32), furMat);
-      head.position.set(0, 0.15, 0.32);
-      this.body.add(head);
-
-      const earGeo = new THREE.BoxGeometry(0.08, 0.08, 0.04);
-      const lEar = new THREE.Mesh(earGeo, maneMat);
-      lEar.position.set(-0.16, 0.18, 0);
-      head.add(lEar);
-      const rEar = new THREE.Mesh(earGeo, maneMat);
-      rEar.position.set(0.16, 0.18, 0);
-      head.add(rEar);
-
-      const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
-      lEye.position.set(-0.1, 0.05, 0.16);
-      head.add(lEye);
-      const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
-      rEye.position.set(0.1, 0.05, 0.16);
-      head.add(rEye);
-
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.35), furMat);
-      tail.position.set(0, 0.1, -0.38);
-      tail.rotation.x = -0.4;
-      this.body.add(tail);
-
-    } else if (this.petType === 'pig') {
-      const skinMat = new THREE.MeshStandardMaterial({ color: 0xfb7185, roughness: 0.4 });
-      const snoutMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.5 });
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-
-      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 16), skinMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      const snout = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.12), snoutMat);
-      snout.position.set(0, -0.02, 0.32);
-      this.body.add(snout);
-
-      const earGeo = new THREE.BoxGeometry(0.12, 0.16, 0.04);
-      const lEar = new THREE.Mesh(earGeo, snoutMat);
-      lEar.position.set(-0.2, 0.24, 0.08);
-      lEar.rotation.z = 0.4;
-      this.body.add(lEar);
-      const rEar = new THREE.Mesh(earGeo, snoutMat);
-      rEar.position.set(0.2, 0.24, 0.08);
-      rEar.rotation.z = -0.4;
-      this.body.add(rEar);
-
-      const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), eyeMat);
-      lEye.position.set(-0.12, 0.08, 0.28);
-      this.body.add(lEye);
-      const rEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), eyeMat);
-      rEye.position.set(0.12, 0.08, 0.28);
-      this.body.add(rEye);
-
-    } else if (this.petType === 'dog') {
-      const furMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 });
-      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffedd5, roughness: 0.5 });
-      const noseMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.5), furMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.08), whiteMat);
-      chest.position.set(0, -0.05, 0.23);
-      this.body.add(chest);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.34), furMat);
-      head.position.set(0, 0.2, 0.25);
-      this.body.add(head);
-
-      const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.16), whiteMat);
-      muzzle.position.set(0, -0.06, 0.2);
-      head.add(muzzle);
-
-      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), noseMat);
-      nose.position.set(0, 0.02, 0.1);
-      muzzle.add(nose);
-
-      const earGeo = new THREE.ConeGeometry(0.08, 0.18, 4);
-      const lEar = new THREE.Mesh(earGeo, furMat);
-      lEar.position.set(-0.14, 0.22, -0.02);
-      head.add(lEar);
-      const rEar = new THREE.Mesh(earGeo, furMat);
-      rEar.position.set(0.14, 0.22, -0.02);
-      head.add(rEar);
-
-      const tail = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 6, 12, Math.PI * 1.3), furMat);
-      tail.position.set(0, 0.18, -0.28);
-      tail.rotation.y = Math.PI / 2;
-      this.body.add(tail);
-
-    } else if (this.petType === 'cheetah') {
-      const furMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4 });
-      const spotMat = new THREE.MeshStandardMaterial({ color: 0x18181b });
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
-
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.35, 0.6), furMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      for (let i = 0; i < 6; i++) {
-        const spot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), spotMat);
-        spot.position.set((Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.5);
-        this.body.add(spot);
-      }
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.28, 0.3), furMat);
-      head.position.set(0, 0.16, 0.35);
-      this.body.add(head);
-
-      const lEye = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), eyeMat);
-      lEye.position.set(-0.08, 0.04, 0.16);
-      head.add(lEye);
-      const rEye = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), eyeMat);
-      rEye.position.set(0.08, 0.04, 0.16);
-      head.add(rEye);
-
-      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.45, 6), furMat);
-      tail.position.set(0, 0.1, -0.45);
-      tail.rotation.x = -0.6;
-      this.body.add(tail);
-
-    } else if (this.petType === 'unicorn') {
-      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.1, emissive: 0xa855f7, emissiveIntensity: 0.2 });
-      const maneMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-      const hornMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
-
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.55), whiteMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.38, 0.36), whiteMat);
-      head.position.set(0, 0.22, 0.3);
-      this.body.add(head);
-
-      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.38, 6), hornMat);
-      horn.position.set(0, 0.32, 0.12);
-      horn.rotation.x = 0.3;
-      head.add(horn);
-
-      const mane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.25), maneMat);
-      mane.position.set(0, 0.15, -0.15);
-      head.add(mane);
-
-      const wingGeo = new THREE.BoxGeometry(0.35, 0.18, 0.02);
-      const wingMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-      this.leftWing = new THREE.Mesh(wingGeo, wingMat);
-      this.leftWing.position.set(-0.35, 0.15, -0.1);
-      this.body.add(this.leftWing);
-      this.rightWing = new THREE.Mesh(wingGeo, wingMat);
-      this.rightWing.position.set(0.35, 0.15, -0.1);
-      this.body.add(this.rightWing);
-
-    } else {
-      const bodyMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 0.3,
-        metalness: 0.1,
-        emissive: 0xf472b6,
-        emissiveIntensity: 0.25,
-      });
-      const earMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 });
-      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-      const cheekMat = new THREE.MeshBasicMaterial({ color: 0xfb7185 });
-      const wingMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-      const ringMat = new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending });
-
-      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.38, 20, 20), bodyMat);
-      this.body.castShadow = true;
-      this.group.add(this.body);
-
-      const earGeo = new THREE.ConeGeometry(0.12, 0.35, 8);
-      this.leftEar = new THREE.Mesh(earGeo, earMat);
-      this.leftEar.position.set(-0.2, 0.38, -0.05);
-      this.leftEar.rotation.z = 0.25;
-      this.leftEar.rotation.x = -0.15;
-      this.body.add(this.leftEar);
-
-      this.rightEar = new THREE.Mesh(earGeo, earMat);
-      this.rightEar.position.set(0.2, 0.38, -0.05);
-      this.rightEar.rotation.z = -0.25;
-      this.rightEar.rotation.x = -0.15;
-      this.body.add(this.rightEar);
-
-      const eyeGeo = new THREE.SphereGeometry(0.065, 10, 10);
-      const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-      leftEye.position.set(-0.12, 0.06, 0.33);
-      this.body.add(leftEye);
-
-      const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-      rightEye.position.set(0.12, 0.06, 0.33);
-      this.body.add(rightEye);
-
-      const cheekGeo = new THREE.SphereGeometry(0.045, 8, 8);
-      const leftCheek = new THREE.Mesh(cheekGeo, cheekMat);
-      leftCheek.position.set(-0.2, -0.05, 0.3);
-      this.body.add(leftCheek);
-
-      const rightCheek = new THREE.Mesh(cheekGeo, cheekMat);
-      rightCheek.position.set(0.2, -0.05, 0.3);
-      this.body.add(rightCheek);
-
-      const wingGeo = new THREE.BoxGeometry(0.35, 0.18, 0.02);
-      this.leftWing = new THREE.Mesh(wingGeo, wingMat);
-      this.leftWing.position.set(-0.35, 0.1, -0.22);
-      this.body.add(this.leftWing);
-
-      this.rightWing = new THREE.Mesh(wingGeo, wingMat);
-      this.rightWing.position.set(0.35, 0.1, -0.22);
-      this.body.add(this.rightWing);
-
-      const ringGeo = new THREE.TorusGeometry(0.55, 0.02, 8, 24);
-      this.auraRing = new THREE.Mesh(ringGeo, ringMat);
-      this.auraRing.rotation.x = Math.PI / 2.3;
-      this.group.add(this.auraRing);
-    }
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xf472b6, emissiveIntensity: 0.3 });
+    this.body = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 16), bodyMat);
+    this.group.add(this.body);
   }
 
   update(delta) {
     this.hoverTime += delta;
-
     const offsetConfig = CONFIG.petOffsets[this.slotIndex] || CONFIG.petOffsets[0];
     const playerRot = this.player.group.rotation.y;
     const worldOffset = offsetConfig.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRot);
@@ -2927,83 +3251,30 @@ class BuddyPet {
     const targetPos = this.player.group.position.clone().add(worldOffset);
     targetPos.y += bobbing;
 
-    const distToTarget = this.group.position.distanceTo(targetPos);
-    const speedFactor = distToTarget > 3.0 ? CONFIG.petFollowSpeed * 1.6 : CONFIG.petFollowSpeed;
-
-    this.group.position.lerp(targetPos, Math.min(delta * speedFactor, 1.0));
-
-    let lookTarget = null;
-    const nearestEnemy = this.findNearestZombie();
-    if (nearestEnemy) {
-      lookTarget = nearestEnemy.group.position;
-    } else {
-      lookTarget = this.player.group.position.clone().add(new THREE.Vector3(0, 0, 5).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRot));
-    }
-
-    if (lookTarget) {
-      const lookDir = new THREE.Vector3().subVectors(lookTarget, this.group.position);
-      const targetAngle = Math.atan2(lookDir.x, lookDir.z);
-      let diff = targetAngle - this.group.rotation.y;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      this.group.rotation.y += diff * Math.min(delta * 8.0, 1.0);
-    }
-
-    if (this.leftWing && this.rightWing) {
-      const wingFlap = Math.sin(this.hoverTime * 14) * 0.45;
-      this.leftWing.rotation.y = wingFlap;
-      this.rightWing.rotation.y = -wingFlap;
-    }
-    if (this.auraRing) {
-      this.auraRing.rotation.z += delta * 1.8;
-    }
-
-    if (this.shootAnimationTimer > 0) {
-      this.shootAnimationTimer -= delta;
-      const t = Math.max(this.shootAnimationTimer / 0.25, 0);
-      if (this.body) this.body.scale.set(1.0 + t * 0.35, 1.0 + t * 0.35, 1.0 + t * 0.35);
-    } else {
-      if (this.body) this.body.scale.set(1.0, 1.0, 1.0);
-    }
+    this.group.position.lerp(targetPos, Math.min(delta * CONFIG.petFollowSpeed, 1.0));
 
     this.attackTimer += delta;
     if (this.attackTimer >= this.attackCooldown) {
-      if (nearestEnemy) {
-        this.shoot(nearestEnemy);
+      const nearest = this.findNearestEnemy();
+      if (nearest) {
+        projectileManager.shoot(this.group.position, nearest, this.petData.bulletType, this.petData.bulletSpeed);
         this.attackTimer = 0;
       }
     }
   }
 
-  findNearestZombie() {
+  findNearestEnemy() {
     let nearest = null;
     let minDist = CONFIG.petAttackRange;
-
-    zombieManager.zombies.forEach((zombie) => {
-      if (zombie.isDead || zombie.isDying) return;
-      const dist = this.group.position.distanceTo(zombie.group.position);
+    enemyManager.enemies.forEach((enemy) => {
+      if (enemy.isDead || enemy.isDying) return;
+      const dist = this.group.position.distanceTo(enemy.group.position);
       if (dist < minDist) {
         minDist = dist;
-        nearest = zombie;
+        nearest = enemy;
       }
     });
-
     return nearest;
-  }
-
-  shoot(targetZombie) {
-    this.shootAnimationTimer = 0.25;
-
-    const muzzlePos = this.group.position.clone().add(
-      new THREE.Vector3(0, 0, 0.45).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y)
-    );
-
-    projectileManager.shoot(
-      muzzlePos,
-      targetZombie,
-      this.petData.bulletType,
-      this.petData.bulletSpeed
-    );
   }
 
   destroy() {
@@ -3021,11 +3292,9 @@ class PetManager {
   rebuild(petIds) {
     this.pets.forEach(p => p.destroy());
     this.pets = [];
-
     const ids = Array.isArray(petIds) && petIds.length > 0 ? petIds : ['fairy'];
     ids.slice(0, 3).forEach((petId, index) => {
-      const pet = new BuddyPet(this.player, petId, index);
-      this.pets.push(pet);
+      this.pets.push(new BuddyPet(this.player, petId, index));
     });
   }
 
@@ -3035,7 +3304,7 @@ class PetManager {
 }
 
 // =============================================================================
-// 12. サードパーソンカメラコントローラー
+// 13. カメラコントローラー
 // =============================================================================
 class CameraController {
   constructor(camera, target) {
@@ -3046,12 +3315,11 @@ class CameraController {
   }
 
   shake(amount) {
-    this.shakeIntensity = Math.min(this.shakeIntensity + amount, 0.4);
+    this.shakeIntensity = Math.min(this.shakeIntensity + amount, 0.5);
   }
 
   update(delta) {
     if (!this.target) return;
-
     const idealOffset = CONFIG.cameraOffset.clone();
     const targetPos = this.target.group.position;
     const idealPos = targetPos.clone().add(idealOffset);
@@ -3063,7 +3331,6 @@ class CameraController {
     }
 
     this.camera.position.lerp(idealPos, CONFIG.cameraLerp);
-
     const idealLookAt = targetPos.clone().add(CONFIG.cameraLookOffset);
     this.currentLookAt.lerp(idealLookAt, CONFIG.cameraLerp * 1.5);
     this.camera.lookAt(this.currentLookAt);
@@ -3075,13 +3342,131 @@ class CameraController {
 }
 
 // =============================================================================
-// 13. UI & タッチ操作
+// 14. UI / HUD コントローラー (HP/MP, ボスバー, ポップアップ, コントロール)
 // =============================================================================
+function updateStatusHUD() {
+  const hpBar = document.getElementById('player-hp-bar');
+  const hpDmgBar = document.getElementById('player-hp-damage-bar');
+  const hpText = document.getElementById('player-hp-text');
+
+  const mpBar = document.getElementById('player-mp-bar');
+  const mpText = document.getElementById('player-mp-text');
+
+  if (hpBar && hpText) {
+    const hpRatio = (player.hp / player.maxHp) * 100;
+    hpBar.style.width = `${hpRatio}%`;
+    hpText.innerText = `${Math.ceil(player.hp)}/${player.maxHp}`;
+    if (hpDmgBar) hpDmgBar.style.width = `${hpRatio}%`;
+  }
+
+  if (mpBar && mpText) {
+    const mpRatio = (player.mp / player.maxMp) * 100;
+    mpBar.style.width = `${mpRatio}%`;
+    mpText.innerText = `${Math.ceil(player.mp)}/${player.maxMp}`;
+  }
+
+  // 魔法ボタンのMP不足暗転表示
+  Object.keys(MAGIC_DATA).forEach(key => {
+    const btn = document.getElementById(`btn-magic-${key}`);
+    if (btn) {
+      btn.classList.toggle('is-disabled', player.mp < MAGIC_DATA[key].cost);
+    }
+  });
+}
+
+function showBossHpBar(boss) {
+  const container = document.getElementById('boss-hp-container');
+  const nameEl = document.getElementById('boss-name');
+  const weakEl = document.getElementById('boss-weak-badge');
+  const resistEl = document.getElementById('boss-resist-badge');
+
+  if (container) container.classList.remove('hidden');
+  if (nameEl) nameEl.innerText = boss.type === 'king_goblin' ? '👑 KING GOBLIN (中ボス)' : '😈 DEMON LORD (大魔王)';
+
+  const weakIcon = boss.weakness === 'ice' ? '❄️氷' : '🌪️風';
+  const resistIcon = boss.resistance === 'explosion' ? '💥爆発' : '🔥炎';
+  if (weakEl) weakEl.innerText = `弱点: ${weakIcon}`;
+  if (resistEl) resistEl.innerText = `耐性: ${resistIcon}`;
+}
+
+function updateBossHpBar(boss) {
+  const bar = document.getElementById('boss-hp-bar');
+  const dmgBar = document.getElementById('boss-hp-damage-bar');
+  if (bar) {
+    const ratio = (boss.hp / boss.maxHp) * 100;
+    bar.style.width = `${ratio}%`;
+    if (dmgBar) dmgBar.style.width = `${ratio}%`;
+  }
+}
+
+function hideBossHpBar() {
+  const container = document.getElementById('boss-hp-container');
+  if (container) container.classList.add('hidden');
+}
+
+function showDamagePopup(worldPos, damage, affinityType = 'normal') {
+  const screenPos = worldPos.clone().project(camera);
+  const x = ((screenPos.x + 1) * window.innerWidth) / 2;
+  const y = ((-screenPos.y + 1) * window.innerHeight) / 2;
+
+  const popup = document.createElement('div');
+  if (affinityType === 'weak') {
+    popup.className = 'weak-popup';
+    popup.innerText = `⚡ WEAK! -${damage}`;
+  } else if (affinityType === 'resist') {
+    popup.className = 'resist-popup';
+    popup.innerText = `🛡️ RESIST -${damage}`;
+  } else {
+    popup.className = 'coin-popup';
+    popup.innerText = `-${damage}`;
+  }
+
+  popup.style.left = `${x}px`;
+  popup.style.top = `${y}px`;
+  document.getElementById('ui-layer').appendChild(popup);
+
+  setTimeout(() => popup.remove(), 850);
+}
+
+function updateHUD(worldPos, text = null) {
+  const killEl = document.getElementById('kill-count');
+  const coinEl = document.getElementById('coin-count');
+  const shopCoinEl = document.getElementById('shop-coin-display');
+
+  if (killEl) killEl.innerText = state.kills;
+  if (coinEl) coinEl.innerText = state.coins;
+  if (shopCoinEl) shopCoinEl.innerText = state.coins;
+
+  if (worldPos && text) {
+    soundManager.playCoin();
+    const screenPos = worldPos.clone().project(camera);
+    const x = ((screenPos.x + 1) * window.innerWidth) / 2;
+    const y = ((-screenPos.y + 1) * window.innerHeight) / 2;
+
+    const popup = document.createElement('div');
+    popup.className = 'coin-popup';
+    popup.innerText = text;
+    popup.style.left = `${x}px`;
+    popup.style.top = `${y}px`;
+    document.getElementById('ui-layer').appendChild(popup);
+
+    setTimeout(() => popup.remove(), 900);
+  }
+}
+
 function setupControls(player) {
   const joystickZone = document.getElementById('joystick-zone');
   const joystickKnob = document.getElementById('joystick-knob');
   const attackBtn = document.getElementById('btn-attack');
   const soundBtn = document.getElementById('btn-toggle-sound');
+  const retryBtn = document.getElementById('btn-retry');
+
+  if (retryBtn) {
+    retryBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      player.respawn();
+    });
+  }
 
   if (soundBtn) {
     soundBtn.addEventListener('pointerdown', (e) => {
@@ -3089,6 +3474,18 @@ function setupControls(player) {
       soundManager.toggleMute();
     });
   }
+
+  // 魔法ボタンタップイベント
+  ['explosion', 'flame', 'ice', 'wind', 'thunder'].forEach(key => {
+    const btn = document.getElementById(`btn-magic-${key}`);
+    if (btn) {
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        soundManager.unlock();
+        player.castMagic(key);
+      });
+    }
+  });
 
   window.addEventListener('pointerdown', () => soundManager.unlock(), { once: true });
   window.addEventListener('keydown', () => soundManager.unlock(), { once: true });
@@ -3098,19 +3495,16 @@ function setupControls(player) {
   const maxRadius = 46;
 
   function onJoystickStart(clientX, clientY, identifier) {
-    if (state.isPaused) return;
+    if (state.isPaused || state.isGameOver) return;
     soundManager.unlock();
     touchId = identifier;
     const rect = joystickZone.getBoundingClientRect();
-    center = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    };
+    center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     onJoystickMove(clientX, clientY);
   }
 
   function onJoystickMove(clientX, clientY) {
-    if (state.isPaused) return;
+    if (state.isPaused || state.isGameOver) return;
     const deltaX = clientX - center.x;
     const deltaY = clientY - center.y;
     const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -3121,7 +3515,6 @@ function setupControls(player) {
     const knobY = Math.sin(angle) * clampedDist;
 
     joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
-
     state.moveVector.x = knobX / maxRadius;
     state.moveVector.y = -knobY / maxRadius;
   }
@@ -3142,9 +3535,7 @@ function setupControls(player) {
 
   joystickZone.addEventListener('pointermove', (e) => {
     e.preventDefault();
-    if (touchId === e.pointerId) {
-      onJoystickMove(e.clientX, e.clientY);
-    }
+    if (touchId === e.pointerId) onJoystickMove(e.clientX, e.clientY);
   });
 
   const stopJoystick = (e) => {
@@ -3163,118 +3554,41 @@ function setupControls(player) {
   });
 
   window.addEventListener('keydown', (e) => {
-    if (state.isPaused) return;
+    if (state.isPaused || state.isGameOver) return;
     soundManager.unlock();
     switch (e.code) {
-      case 'KeyW':
-      case 'ArrowUp':
-        state.keys.forward = true;
-        break;
-      case 'KeyS':
-      case 'ArrowDown':
-        state.keys.backward = true;
-        break;
-      case 'KeyA':
-      case 'ArrowLeft':
-        state.keys.left = true;
-        break;
-      case 'KeyD':
-      case 'ArrowRight':
-        state.keys.right = true;
-        break;
-      case 'Space':
-      case 'KeyJ':
-        player.attack();
-        break;
+      case 'KeyW': case 'ArrowUp': state.keys.forward = true; break;
+      case 'KeyS': case 'ArrowDown': state.keys.backward = true; break;
+      case 'KeyA': case 'ArrowLeft': state.keys.left = true; break;
+      case 'KeyD': case 'ArrowRight': state.keys.right = true; break;
+      case 'Space': case 'KeyJ': player.attack(); break;
+      // 魔法ショートカット
+      case 'KeyQ': case 'Digit1': player.castMagic('explosion'); break;
+      case 'KeyE': case 'Digit2': player.castMagic('flame'); break;
+      case 'KeyR': case 'Digit3': player.castMagic('ice'); break;
+      case 'KeyF': case 'Digit4': player.castMagic('wind'); break;
+      case 'KeyC': case 'Digit5': player.castMagic('thunder'); break;
     }
   });
 
   window.addEventListener('keyup', (e) => {
     switch (e.code) {
-      case 'KeyW':
-      case 'ArrowUp':
-        state.keys.forward = false;
-        break;
-      case 'KeyS':
-      case 'ArrowDown':
-        state.keys.backward = false;
-        break;
-      case 'KeyA':
-      case 'ArrowLeft':
-        state.keys.left = false;
-        break;
-      case 'KeyD':
-      case 'ArrowRight':
-        state.keys.right = false;
-        break;
+      case 'KeyW': case 'ArrowUp': state.keys.forward = false; break;
+      case 'KeyS': case 'ArrowDown': state.keys.backward = false; break;
+      case 'KeyA': case 'ArrowLeft': state.keys.left = false; break;
+      case 'KeyD': case 'ArrowRight': state.keys.right = false; break;
     }
   });
 }
 
-function updateHUD(worldPos, statusType = false) {
-  const killEl = document.getElementById('kill-count');
-  const coinEl = document.getElementById('coin-count');
-  const shopCoinEl = document.getElementById('shop-coin-display');
-  const buddyStatusEl = document.getElementById('buddy-status');
-
-  if (killEl) killEl.innerText = state.kills;
-  if (coinEl) coinEl.innerText = state.coins;
-  if (shopCoinEl) shopCoinEl.innerText = state.coins;
-
-  if (buddyStatusEl && saveData.equipped.pets) {
-    const icons = saveData.equipped.pets.map(p => ITEMS_DATA.pets[p]?.icon || '🧚').join('');
-    buddyStatusEl.innerText = `${icons} (${saveData.equipped.pets.length}/3)`;
-  }
-
-  const killsCard = document.querySelector('.kills-card');
-  const coinsCard = document.querySelector('.coins-card');
-  if (killsCard) killsCard.classList.add('bump');
-  if (coinsCard) coinsCard.classList.add('bump');
-
-  setTimeout(() => {
-    if (killsCard) killsCard.classList.remove('bump');
-    if (coinsCard) coinsCard.classList.remove('bump');
-  }, 150);
-
-  if (worldPos) {
-    soundManager.playCoin();
-    const screenPos = worldPos.clone().project(camera);
-    const x = ((screenPos.x + 1) * window.innerWidth) / 2;
-    const y = ((-screenPos.y + 1) * window.innerHeight) / 2;
-
-    const popup = document.createElement('div');
-    popup.className = 'coin-popup';
-
-    if (statusType === 'FINISH') {
-      popup.innerText = '💥 FINISH!! +10🪙';
-      popup.style.color = '#fde047';
-      popup.style.textShadow = '0 0 16px #ef4444, 0 0 32px #f97316';
-      popup.style.transform = 'scale(1.4)';
-    } else if (statusType === true) {
-      popup.innerText = '⚔️ SLASH! +10🪙';
-      popup.style.color = '#fef08a';
-      popup.style.textShadow = '0 0 12px #ef4444, 0 0 24px #f59e0b';
-      popup.style.transform = 'scale(1.2)';
-    } else {
-      popup.innerText = '+10 COINS';
-    }
-
-    popup.style.left = `${x}px`;
-    popup.style.top = `${y}px`;
-    document.getElementById('ui-layer').appendChild(popup);
-
-    setTimeout(() => popup.remove(), 900);
-  }
-}
-
 // =============================================================================
-// 14. ショップ & 着せ替えUIコントローラー
+// 15. ショップ & 魔法強化UIコントローラー
 // =============================================================================
 class ShopUI {
   constructor(player, petManager) {
     this.player = player;
     this.petManager = petManager;
-    this.currentTab = 'outfit';
+    this.currentTab = 'magic';
     this.modal = document.getElementById('shop-modal');
     this.openBtn = document.getElementById('btn-open-shop');
     this.closeBtn = document.getElementById('btn-close-shop');
@@ -3333,6 +3647,11 @@ class ShopUI {
   render() {
     this.grid.innerHTML = '';
 
+    if (this.currentTab === 'magic') {
+      this.renderMagicTab();
+      return;
+    }
+
     if (this.currentTab === 'pet') {
       this.renderPetTab();
       return;
@@ -3344,20 +3663,11 @@ class ShopUI {
     let categoryKey = '';
 
     if (this.currentTab === 'outfit') {
-      items = ITEMS_DATA.outfits;
-      unlockedList = saveData.unlocked.outfits;
-      equippedId = saveData.equipped.outfit;
-      categoryKey = 'outfit';
+      items = ITEMS_DATA.outfits; unlockedList = saveData.unlocked.outfits; equippedId = saveData.equipped.outfit; categoryKey = 'outfit';
     } else if (this.currentTab === 'head') {
-      items = ITEMS_DATA.heads;
-      unlockedList = saveData.unlocked.heads;
-      equippedId = saveData.equipped.head;
-      categoryKey = 'head';
+      items = ITEMS_DATA.heads; unlockedList = saveData.unlocked.heads; equippedId = saveData.equipped.head; categoryKey = 'head';
     } else if (this.currentTab === 'sword') {
-      items = ITEMS_DATA.swords;
-      unlockedList = saveData.unlocked.swords;
-      equippedId = saveData.equipped.sword;
-      categoryKey = 'sword';
+      items = ITEMS_DATA.swords; unlockedList = saveData.unlocked.swords; equippedId = saveData.equipped.sword; categoryKey = 'sword';
     }
 
     Object.values(items).forEach((item) => {
@@ -3376,23 +3686,14 @@ class ShopUI {
 
       const previewBox = document.createElement('div');
       previewBox.className = 'item-preview-box';
-      
       const icon = document.createElement('span');
       icon.className = 'item-icon-display';
       icon.innerText = item.icon;
       previewBox.appendChild(icon);
-
-      if (item.tag) {
-        const tag = document.createElement('span');
-        tag.className = 'item-effect-tag';
-        tag.innerText = item.tag;
-        previewBox.appendChild(tag);
-      }
       card.appendChild(previewBox);
 
       const info = document.createElement('div');
       info.className = 'item-info';
-
       const title = document.createElement('h3');
       title.className = 'item-name';
       title.innerText = item.name;
@@ -3402,12 +3703,10 @@ class ShopUI {
       desc.className = 'item-desc';
       desc.innerText = item.desc;
       info.appendChild(desc);
-
       card.appendChild(info);
 
       const actionRow = document.createElement('div');
       actionRow.className = 'item-action-row';
-
       const btn = document.createElement('button');
       btn.className = 'item-btn';
 
@@ -3432,9 +3731,99 @@ class ShopUI {
 
       actionRow.appendChild(btn);
       card.appendChild(actionRow);
-
       this.grid.appendChild(card);
     });
+  }
+
+  renderMagicTab() {
+    Object.values(MAGIC_DATA).forEach((magic) => {
+      const currentLevel = saveData.magicLevels[magic.id] || 1;
+      const currentTier = magic.tiers[currentLevel - 1];
+      const nextTier = magic.tiers[currentLevel];
+      const isMax = currentLevel >= 3;
+
+      const card = document.createElement('div');
+      card.className = `item-card ${isMax ? 'is-max' : ''}`;
+
+      const badge = document.createElement('span');
+      badge.className = isMax ? 'item-badge-slot' : 'item-badge-equipped';
+      badge.innerText = `Lv.${currentLevel} ${isMax ? '(極限)' : ''}`;
+      card.appendChild(badge);
+
+      const previewBox = document.createElement('div');
+      previewBox.className = 'item-preview-box';
+      const icon = document.createElement('span');
+      icon.className = 'item-icon-display';
+      icon.innerText = magic.icon;
+      previewBox.appendChild(icon);
+      card.appendChild(previewBox);
+
+      const info = document.createElement('div');
+      info.className = 'item-info';
+      const title = document.createElement('h3');
+      title.className = 'item-name';
+      title.innerText = `${magic.name} (消費 ${magic.cost}MP)`;
+      info.appendChild(title);
+
+      const desc = document.createElement('p');
+      desc.className = 'item-desc';
+      desc.innerText = `【現在: ${currentTier.name}】${currentTier.desc}`;
+      info.appendChild(desc);
+
+      if (!isMax && nextTier) {
+        const nextDesc = document.createElement('p');
+        nextDesc.className = 'item-desc';
+        nextDesc.style.color = '#fde047';
+        nextDesc.style.marginTop = '4px';
+        nextDesc.innerText = `▶ 次Lv: ${nextTier.name} (威力UP・範囲拡大)`;
+        info.appendChild(nextDesc);
+      }
+      card.appendChild(info);
+
+      const actionRow = document.createElement('div');
+      actionRow.className = 'item-action-row';
+
+      const btn = document.createElement('button');
+      btn.className = 'item-btn';
+
+      if (isMax) {
+        btn.className += ' item-btn-max';
+        btn.innerText = '★ 最大レベル (MAX)';
+      } else {
+        btn.className += ' item-btn-buy';
+        btn.innerHTML = `Lv.${currentLevel + 1}に強化 🪙${nextTier.price}`;
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          this.upgradeMagic(magic.id, nextTier, card);
+        });
+      }
+
+      actionRow.appendChild(btn);
+      card.appendChild(actionRow);
+      this.grid.appendChild(card);
+    });
+  }
+
+  upgradeMagic(magicId, nextTier, cardElement) {
+    if (state.coins < nextTier.price) {
+      cardElement.classList.add('shake-anim');
+      setTimeout(() => cardElement.classList.remove('shake-anim'), 400);
+      return;
+    }
+
+    soundManager.playBuy();
+    state.coins -= nextTier.price;
+    saveData.coins = state.coins;
+
+    saveData.magicLevels[magicId] = (saveData.magicLevels[magicId] || 1) + 1;
+    SaveManager.save(saveData);
+
+    // UIタグ更新
+    const tag = document.getElementById(`tag-level-${magicId}`);
+    if (tag) tag.innerText = `Lv.${saveData.magicLevels[magicId]}`;
+
+    updateHUD();
+    this.render();
   }
 
   renderPetTab() {
@@ -3458,23 +3847,14 @@ class ShopUI {
 
       const previewBox = document.createElement('div');
       previewBox.className = 'item-preview-box';
-      
       const icon = document.createElement('span');
       icon.className = 'item-icon-display';
       icon.innerText = item.icon;
       previewBox.appendChild(icon);
-
-      if (item.tag) {
-        const tag = document.createElement('span');
-        tag.className = 'item-effect-tag';
-        tag.innerText = item.tag;
-        previewBox.appendChild(tag);
-      }
       card.appendChild(previewBox);
 
       const info = document.createElement('div');
       info.className = 'item-info';
-
       const title = document.createElement('h3');
       title.className = 'item-name';
       title.innerText = item.name;
@@ -3484,7 +3864,6 @@ class ShopUI {
       desc.className = 'item-desc';
       desc.innerText = `${item.desc} (攻撃間隔: ${item.attackInterval}s)`;
       info.appendChild(desc);
-
       card.appendChild(info);
 
       const actionRow = document.createElement('div');
@@ -3496,32 +3875,18 @@ class ShopUI {
         unequipBtn.innerText = '✕ 外す';
         unequipBtn.addEventListener('pointerdown', (e) => {
           e.preventDefault();
-          if (equippedPets.length <= 1) {
-            card.classList.add('shake-anim');
-            setTimeout(() => card.classList.remove('shake-anim'), 400);
-            return;
-          }
+          if (equippedPets.length <= 1) return;
           this.unequipPet(item.id);
         });
         actionRow.appendChild(unequipBtn);
       } else if (isUnlocked) {
         const equipBtn = document.createElement('button');
         equipBtn.className = 'item-btn item-btn-equip';
-
-        if (equippedPets.length >= 3) {
-          equipBtn.innerText = '満杯 (3/3)';
-          equipBtn.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            card.classList.add('shake-anim');
-            setTimeout(() => card.classList.remove('shake-anim'), 400);
-          });
-        } else {
-          equipBtn.innerText = `＋ 編成 (${equippedPets.length + 1}/3)`;
-          equipBtn.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            this.equipPet(item.id);
-          });
-        }
+        equipBtn.innerText = `＋ 編成 (${equippedPets.length + 1}/3)`;
+        equipBtn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          this.equipPet(item.id);
+        });
         actionRow.appendChild(equipBtn);
       } else {
         const buyBtn = document.createElement('button');
@@ -3550,10 +3915,7 @@ class ShopUI {
     state.coins -= item.price;
     saveData.coins = state.coins;
 
-    if (!saveData.unlocked.pets.includes(item.id)) {
-      saveData.unlocked.pets.push(item.id);
-    }
-
+    if (!saveData.unlocked.pets.includes(item.id)) saveData.unlocked.pets.push(item.id);
     if (saveData.equipped.pets.length < 3) {
       saveData.equipped.pets.push(item.id);
       this.petManager.rebuild(saveData.equipped.pets);
@@ -3566,7 +3928,6 @@ class ShopUI {
 
   equipPet(petId) {
     if (saveData.equipped.pets.length >= 3 || saveData.equipped.pets.includes(petId)) return;
-
     soundManager.playEquip();
     saveData.equipped.pets.push(petId);
     this.petManager.rebuild(saveData.equipped.pets);
@@ -3577,7 +3938,6 @@ class ShopUI {
 
   unequipPet(petId) {
     if (saveData.equipped.pets.length <= 1) return;
-
     soundManager.playEquip();
     saveData.equipped.pets = saveData.equipped.pets.filter(id => id !== petId);
     this.petManager.rebuild(saveData.equipped.pets);
@@ -3597,16 +3957,11 @@ class ShopUI {
     state.coins -= item.price;
     saveData.coins = state.coins;
 
-    if (categoryKey === 'outfit') {
-      saveData.unlocked.outfits.push(item.id);
-    } else if (categoryKey === 'head') {
-      saveData.unlocked.heads.push(item.id);
-    } else if (categoryKey === 'sword') {
-      saveData.unlocked.swords.push(item.id);
-    }
+    if (categoryKey === 'outfit') saveData.unlocked.outfits.push(item.id);
+    else if (categoryKey === 'head') saveData.unlocked.heads.push(item.id);
+    else if (categoryKey === 'sword') saveData.unlocked.swords.push(item.id);
 
     this.equipItem(categoryKey, item.id);
-
     SaveManager.save(saveData);
     updateHUD();
     this.render();
@@ -3640,16 +3995,15 @@ function onWindowResize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 }
 window.addEventListener('resize', onWindowResize);
-window.addEventListener('orientationchange', () => {
-  setTimeout(onWindowResize, 100);
-});
+window.addEventListener('orientationchange', () => setTimeout(onWindowResize, 100));
 
 // =============================================================================
-// 15. メインゲームループ初期化 & 実行
+// 16. メインゲームループ初期化 & 実行
 // =============================================================================
 const swordParticleSystem = new SwordParticleSystem();
+const magicSystem = new MagicSystem();
 const player = new Player();
-const zombieManager = new ZombieManager();
+const enemyManager = new EnemyManager();
 const particleSystem = new ParticleSystem();
 const projectileManager = new ProjectileManager();
 const petManager = new PetManager(player);
@@ -3662,9 +4016,17 @@ window.loadPlayerModel = (url) => player.loadCustomModel(url);
 
 setupControls(player);
 updateHUD();
+updateStatusHUD();
 
-for (let i = 0; i < 5; i++) {
-  zombieManager.spawnOne(player.group.position);
+// 各魔法レベルタグの初期反映
+Object.keys(MAGIC_DATA).forEach(key => {
+  const tag = document.getElementById(`tag-level-${key}`);
+  if (tag) tag.innerText = `Lv.${saveData.magicLevels[key] || 1}`;
+});
+
+// 初期モンスター配置
+for (let i = 0; i < 6; i++) {
+  enemyManager.spawnRandomEnemy(player.group.position);
 }
 
 const clock = new THREE.Clock();
@@ -3682,16 +4044,18 @@ function animate() {
 
   updateDungeonEnvironment(rawDelta);
 
-  if (!state.isPaused) {
+  if (!state.isPaused && !state.isGameOver) {
     player.update(delta);
     petManager.update(delta);
     projectileManager.update(delta);
-    zombieManager.update(delta, player.group.position);
+    enemyManager.update(delta, player.group.position);
+    magicSystem.update(rawDelta);
     particleSystem.update(rawDelta);
     swordParticleSystem.update(delta);
     cameraController.update(rawDelta);
   } else {
     swordParticleSystem.update(rawDelta * 0.5);
+    magicSystem.update(rawDelta * 0.5);
   }
 
   renderer.render(scene, camera);

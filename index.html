@@ -3,164 +3,204 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Blade & Buddy - 3D Action Prototype</title>
-  <meta name="theme-color" content="#0a0c16">
-  <!-- PWA & iOS Safari 全画面設定 -->
-  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#090b10">
+  
+  <!-- iOS PWA Settings -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Blade&Buddy">
-  <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="alternate icon" href="icon-192.png">
   
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Noto+Sans+JP:wght@500;700&display=swap" rel="stylesheet">
+  <title>Blade & Buddy - 3D Action RPG</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  
   <link rel="stylesheet" href="style.css">
-  <!-- Three.js CDN & GLTFLoader -->
+  <!-- Three.js (r128) & GLTFLoader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
-  <!-- 3Dレンダリング用コンテナ -->
+  <!-- 3Dゲーム画面コンテナ -->
   <div id="game-container"></div>
 
-  <!-- HUD・ゲームUIレイヤー -->
+  <!-- 被弾時の画面赤フラッシュオーバーレイ -->
+  <div id="damage-overlay" class="damage-overlay"></div>
+
+  <!-- UIレイヤー -->
   <div id="ui-layer">
-    <!-- ヘッダー情報 (バディ・討伐数・コイン) -->
-    <header class="hud-header">
-      <div class="hud-card buddy-card">
-        <span class="hud-icon">🧚</span>
-        <div class="hud-data">
-          <span class="hud-label">BUDDY</span>
-          <span id="buddy-status" class="hud-value buddy-active">AUTO SUPPORT</span>
-        </div>
-      </div>
-      <div class="hud-card kills-card">
-        <span class="hud-icon">⚔️</span>
-        <div class="hud-data">
-          <span class="hud-label">KILLS</span>
-          <span id="kill-count" class="hud-value">0</span>
-        </div>
-      </div>
-      <div class="hud-card coins-card">
-        <span class="hud-icon">🪙</span>
-        <div class="hud-data">
-          <span class="hud-label">COINS</span>
-          <span id="coin-count" class="hud-value">0</span>
-        </div>
-      </div>
-      <!-- ショップオープンボタン -->
-      <button id="btn-open-shop" class="hud-card shop-btn" aria-label="ショップを開く">
-        <span class="hud-icon">🛍️</span>
-        <div class="hud-data">
-          <span class="hud-label">STORE</span>
-          <span class="hud-value shop-btn-text">SHOP</span>
-        </div>
-      </button>
-      <!-- サウンド ON/OFF ボタン -->
-      <button id="btn-toggle-sound" class="hud-card sound-btn" aria-label="サウンド切り替え">
-        <span id="sound-icon" class="hud-icon">🎵</span>
-        <div class="hud-data">
-          <span class="hud-label">AUDIO</span>
-          <span id="sound-status-text" class="hud-value sound-btn-text">BGM ON</span>
-        </div>
-      </button>
-    </header>
-
-    <!-- ショップ & 着せ替えモーダル -->
-    <div id="shop-modal" class="shop-modal hidden">
-      <div class="shop-backdrop" id="shop-backdrop"></div>
-      <div class="shop-panel">
-        <div class="shop-header">
-          <div class="shop-title-group">
-            <h2 class="shop-title">CYBER SHOP & CUSTOMIZE</h2>
-            <p class="shop-subtitle">コインを使って見た目や刀を強化・着せ替え</p>
+    <!-- ヘッダー（HP/MPバー、ボスバー、キル数、コイン、ショップ、サウンド） -->
+    <header class="game-header">
+      <!-- プレイヤーHP / MPステータス -->
+      <div class="player-status-card">
+        <div class="status-row hp-row">
+          <span class="status-label">❤️ HP</span>
+          <div class="bar-container">
+            <div id="player-hp-damage-bar" class="bar-damage"></div>
+            <div id="player-hp-bar" class="bar-fill hp-fill" style="width: 100%;"></div>
           </div>
-          <div class="shop-header-right">
-            <div class="shop-coin-badge">
-              <span class="coin-icon">🪙</span>
-              <span id="shop-coin-display" class="coin-val">0</span>
-            </div>
-            <button id="btn-close-shop" class="shop-close-btn" aria-label="ショップを閉じる">✕</button>
+          <span id="player-hp-text" class="status-val">100/100</span>
+        </div>
+        <div class="status-row mp-row">
+          <span class="status-label">🔮 MP</span>
+          <div class="bar-container">
+            <div id="player-mp-bar" class="bar-fill mp-fill" style="width: 100%;"></div>
+          </div>
+          <span id="player-mp-text" class="status-val">100/100</span>
+        </div>
+      </div>
+
+      <!-- ボスHPバー（ボス出現時のみ表示） -->
+      <div id="boss-hp-container" class="boss-hp-container hidden">
+        <div class="boss-header-row">
+          <span id="boss-name" class="boss-name">👑 KING GOBLIN</span>
+          <div class="boss-affinity-badges">
+            <span id="boss-weak-badge" class="affinity-badge weak">弱点: ❄️氷</span>
+            <span id="boss-resist-badge" class="affinity-badge resist">耐性: 💥爆発</span>
           </div>
         </div>
-
-        <!-- タブナビゲーション -->
-        <nav class="shop-tabs">
-          <button class="shop-tab active" data-tab="outfit">
-            <span class="tab-icon">🥋</span>
-            <span class="tab-label">衣装カラー</span>
-          </button>
-          <button class="shop-tab" data-tab="head">
-            <span class="tab-icon">👑</span>
-            <span class="tab-label">頭装備</span>
-          </button>
-          <button class="shop-tab" data-tab="sword">
-            <span class="tab-icon">⚔️</span>
-            <span class="tab-label">刀スキン & 属性</span>
-          </button>
-          <button class="shop-tab" data-tab="pet">
-            <span class="tab-icon">🐾</span>
-            <span class="tab-label">ペット (最大3体)</span>
-          </button>
-        </nav>
-
-        <!-- アイテムリストコンテナ -->
-        <div class="shop-content">
-          <div id="shop-items-grid" class="shop-items-grid">
-            <!-- JavaScriptで動的生成 -->
-          </div>
-        </div>
-
-        <div class="shop-footer">
-          <span class="shop-footer-tip">💡 装備したアイテムは自動的にゲームに反映・保存されます</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 操作ガイド (PC・タブレット両対応通知) -->
-    <div id="guide-tip" class="guide-tip">
-      <span>🕹️ 左下: 移動 / ⚔️ 右下: 攻撃 / 🧚 ペットが3秒毎に自動魔法援護！</span>
-    </div>
-
-    <!-- iPad/スマホ用タッチコントローラー -->
-    <div id="controls-container">
-      <!-- 左下: バーチャルジョイスティック -->
-      <div id="joystick-zone">
-        <div id="joystick-base">
-          <div id="joystick-knob"></div>
+        <div class="boss-bar-frame">
+          <div id="boss-hp-damage-bar" class="boss-bar-damage"></div>
+          <div id="boss-hp-bar" class="boss-bar-fill" style="width: 100%;"></div>
         </div>
       </div>
 
-      <!-- 右下: 攻撃ボタン -->
-      <div id="action-zone">
-        <button id="btn-attack" aria-label="攻撃" class="action-btn">
-          <span class="btn-inner">
-            <svg class="sword-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline>
-              <line x1="13" y1="19" x2="19" y2="13"></line>
-              <line x1="16" y1="16" x2="20" y2="20"></line>
-              <line x1="19" y1="21" x2="21" y2="19"></line>
-            </svg>
-            <span class="btn-text">ATTACK</span>
-          </span>
-          <span class="btn-ripple"></span>
+      <!-- 右側コントロール（スコア・コイン・ショップ・BGM） -->
+      <div class="stats-container">
+        <div class="stat-card kills-card">
+          <span class="stat-icon">💀</span>
+          <span class="stat-label">KILLS</span>
+          <span id="kill-count" class="stat-value">0</span>
+        </div>
+        <div class="stat-card coins-card">
+          <span class="stat-icon">🪙</span>
+          <span class="stat-label">COINS</span>
+          <span id="coin-count" class="stat-value">0</span>
+        </div>
+        <button id="btn-open-shop" class="shop-btn" aria-label="ショップを開く">
+          <span class="shop-icon">🛒</span>
+          <span class="shop-text">SHOP</span>
+        </button>
+        <button id="btn-toggle-sound" class="sound-btn" aria-label="サウンド切り替え">
+          <span id="sound-icon" class="sound-icon">🎵</span>
+          <span id="sound-status-text" class="sound-text">BGM ON</span>
         </button>
       </div>
+    </header>
+
+    <!-- 仮想ジョイスティック（移動操作：画面左下） -->
+    <div id="joystick-zone" class="joystick-zone">
+      <div id="joystick-base" class="joystick-base">
+        <div id="joystick-knob" class="joystick-knob"></div>
+      </div>
+    </div>
+
+    <!-- 5大属性魔法クイックスロットパレット（画面右下・攻撃ボタン周辺） -->
+    <div id="magic-palette" class="magic-palette">
+      <button id="btn-magic-explosion" class="magic-btn btn-explosion" data-magic="explosion" aria-label="爆発魔法">
+        <span class="magic-icon">💥</span>
+        <span class="magic-level-tag" id="tag-level-explosion">Lv.1</span>
+        <span class="magic-cost-tag">30MP</span>
+        <span class="key-hint">Q/1</span>
+      </button>
+      <button id="btn-magic-flame" class="magic-btn btn-flame" data-magic="flame" aria-label="炎魔法">
+        <span class="magic-icon">🔥</span>
+        <span class="magic-level-tag" id="tag-level-flame">Lv.1</span>
+        <span class="magic-cost-tag">20MP</span>
+        <span class="key-hint">E/2</span>
+      </button>
+      <button id="btn-magic-ice" class="magic-btn btn-ice" data-magic="ice" aria-label="氷魔法">
+        <span class="magic-icon">❄️</span>
+        <span class="magic-level-tag" id="tag-level-ice">Lv.1</span>
+        <span class="magic-cost-tag">25MP</span>
+        <span class="key-hint">R/3</span>
+      </button>
+      <button id="btn-magic-wind" class="magic-btn btn-wind" data-magic="wind" aria-label="風魔法">
+        <span class="magic-icon">🌪️</span>
+        <span class="magic-level-tag" id="tag-level-wind">Lv.1</span>
+        <span class="magic-cost-tag">20MP</span>
+        <span class="key-hint">F/4</span>
+      </button>
+      <button id="btn-magic-thunder" class="magic-btn btn-thunder" data-magic="thunder" aria-label="雷魔法">
+        <span class="magic-icon">⚡</span>
+        <span class="magic-level-tag" id="tag-level-thunder">Lv.1</span>
+        <span class="magic-cost-tag">25MP</span>
+        <span class="key-hint">C/5</span>
+      </button>
+    </div>
+
+    <!-- 攻撃ボタン（画面右下） -->
+    <div id="action-zone" class="action-zone">
+      <button id="btn-attack" class="attack-btn" aria-label="斬撃攻撃">
+        <span class="attack-icon">⚔️</span>
+        <span class="attack-label">SLASH</span>
+        <span class="key-hint-space">SPACE</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ショップモーダル -->
+  <div id="shop-modal" class="shop-modal hidden">
+    <div class="shop-backdrop" id="shop-backdrop"></div>
+    <div class="shop-content">
+      <div class="shop-header">
+        <div class="shop-title-area">
+          <span class="shop-title-icon">🏰</span>
+          <h2>ダンジョン魔導商店 & スキン工房</h2>
+        </div>
+        <div class="shop-coin-badge">
+          <span>所持コイン: 🪙</span>
+          <span id="shop-coin-display">0</span>
+        </div>
+        <button id="btn-close-shop" class="close-btn" aria-label="閉じる">✕</button>
+      </div>
+
+      <!-- タブ切り替え（衣装・頭装備・刀・ペット・魔法強化） -->
+      <div class="shop-tabs">
+        <button class="shop-tab active" data-tab="magic">🔮 魔法強化</button>
+        <button class="shop-tab" data-tab="outfit">🛡️ アーマー衣装</button>
+        <button class="shop-tab" data-tab="head">👤 頭部装備</button>
+        <button class="shop-tab" data-tab="sword">🗡️ 刀スキン&属性</button>
+        <button class="shop-tab" data-tab="pet">🧚 バディペット</button>
+      </div>
+
+      <!-- アイテム・魔法一覧グリッド -->
+      <div id="shop-items-grid" class="shop-items-grid"></div>
+    </div>
+  </div>
+
+  <!-- GAME OVER モーダル -->
+  <div id="gameover-modal" class="gameover-modal hidden">
+    <div class="gameover-backdrop"></div>
+    <div class="gameover-card">
+      <div class="gameover-skull">💀</div>
+      <h2 class="gameover-title">YOU DIED</h2>
+      <p class="gameover-sub">ダンジョンの闇に呑み込まれた…</p>
+
+      <div class="gameover-stats">
+        <div class="go-stat-row">
+          <span>討伐モンスター数:</span>
+          <strong id="go-kills">0</strong>
+        </div>
+        <div class="go-stat-row">
+          <span>総獲得コイン:</span>
+          <strong id="go-coins">0 🪙</strong>
+        </div>
+      </div>
+
+      <button id="btn-retry" class="btn-retry">
+        <span>⚔️ 復活して再挑戦 (REVIVE)</span>
+      </button>
     </div>
   </div>
 
   <script src="main.js"></script>
-
-  <!-- PWA Service Worker 登録スクリプト -->
   <script>
+    // Service Worker Registration for PWA
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-          .then((reg) => console.log('[PWA] Service Worker registered successfully:', reg.scope))
-          .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
+          .then(reg => console.log('[PWA] Service Worker registered successfully:', reg.scope))
+          .catch(err => console.warn('[PWA] Service Worker registration failed:', err));
       });
     }
   </script>
