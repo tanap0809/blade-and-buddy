@@ -3045,7 +3045,6 @@ function updateHUD(worldPos, text = null) {
   if (shopCoinEl) shopCoinEl.innerText = state.coins;
 
   if (worldPos && text) {
-    soundManager.playCoin();
     const screenPos = worldPos.clone().project(camera);
     const x = ((screenPos.x + 1) * window.innerWidth) / 2;
     const y = ((-screenPos.y + 1) * window.innerHeight) / 2;
