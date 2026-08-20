@@ -227,7 +227,6 @@ const ITEMS_DATA = {
       tag: '光属性',
     },
   },
-  // ペット定義 (全7種類: フェアリー + 新規6種)
   pets: {
     fairy: {
       id: 'fairy',
@@ -310,7 +309,7 @@ const ITEMS_DATA = {
 };
 
 // =============================================================================
-// 3. セーブデータ管理 (localStorage / 最大3体ペット編成対応)
+// 3. セーブデータ管理 (localStorage)
 // =============================================================================
 class SaveManager {
   static STORAGE_KEY = 'blade_and_buddy_save_v1';
@@ -322,7 +321,7 @@ class SaveManager {
         outfit: 'default',
         head: 'none',
         sword: 'default',
-        pets: ['fairy'], // 最大3体まで編成可能
+        pets: ['fairy'],
       },
       unlocked: {
         outfits: ['default'],
@@ -339,7 +338,6 @@ class SaveManager {
       if (!json) return this.getDefaultData();
       const data = JSON.parse(json);
 
-      // マイグレーション: 旧形式の単一petから配列petsへの移行
       let pets = ['fairy'];
       if (Array.isArray(data.equipped?.pets)) {
         pets = data.equipped.pets.filter(p => ITEMS_DATA.pets[p]).slice(0, 3);
@@ -635,7 +633,7 @@ class SwordParticleSystem {
 }
 
 // =============================================================================
-// 8. プレイヤーキャラクター生成
+// 8. プレイヤーキャラクター生成 (操作感・方向修正対応)
 // =============================================================================
 class Player {
   constructor() {
@@ -1020,25 +1018,31 @@ class Player {
   }
 
   update(delta) {
-    let inputX = state.moveVector.x;
-    let inputZ = state.moveVector.y;
+    // 画面基準の入力値 (右=+1, 左=-1, 上/奥=+1, 下/手前=-1)
+    let screenX = state.moveVector.x;
+    let screenZ = state.moveVector.y;
 
-    if (state.keys.forward) inputZ += 1;
-    if (state.keys.backward) inputZ -= 1;
-    if (state.keys.left) inputX -= 1;
-    if (state.keys.right) inputX += 1;
+    if (state.keys.forward) screenZ += 1;
+    if (state.keys.backward) screenZ -= 1;
+    if (state.keys.left) screenX -= 1;
+    if (state.keys.right) screenX += 1;
 
-    const inputLen = Math.sqrt(inputX * inputX + inputZ * inputZ);
+    const inputLen = Math.sqrt(screenX * screenX + screenZ * screenZ);
     this.isMoving = inputLen > 0.05;
 
     if (this.isMoving) {
-      const normalizedX = inputX / (inputLen > 1 ? inputLen : 1);
-      const normalizedZ = inputZ / (inputLen > 1 ? inputLen : 1);
+      const normScreenX = screenX / (inputLen > 1 ? inputLen : 1);
+      const normScreenZ = screenZ / (inputLen > 1 ? inputLen : 1);
 
-      this.velocity.x = normalizedX * CONFIG.playerSpeed;
-      this.velocity.z = normalizedZ * CONFIG.playerSpeed;
+      // カメラが-Zから+Zを見ているため、画面右(+screenX)は3Dワールドの-Xに対応
+      const worldX = -normScreenX;
+      const worldZ = normScreenZ;
 
-      this.targetRotation = Math.atan2(normalizedX, normalizedZ);
+      this.velocity.x = worldX * CONFIG.playerSpeed;
+      this.velocity.z = worldZ * CONFIG.playerSpeed;
+
+      // 進行方向へのスムーズな回転
+      this.targetRotation = Math.atan2(worldX, worldZ);
       let diff = this.targetRotation - this.group.rotation.y;
       while (diff < -Math.PI) diff += Math.PI * 2;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1474,7 +1478,7 @@ class ParticleSystem {
 }
 
 // =============================================================================
-// 11. 固有弾丸システム (MagicProjectile) & ペットシステム (BuddyPet & PetManager)
+// 11. 固有弾丸システム (MagicProjectile) & ペットシステム
 // =============================================================================
 class MagicProjectile {
   constructor(startPos, targetZombie, bulletType = 'magic', speed = 16.0) {
@@ -1496,13 +1500,11 @@ class MagicProjectile {
 
   buildBulletMesh() {
     if (this.bulletType === 'rock') {
-      // 岩石弾
       const geo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
       const mat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.9 });
       this.mesh = new THREE.Mesh(geo, mat);
       this.group.add(this.mesh);
     } else if (this.bulletType === 'fireball') {
-      // 紅蓮火球
       const geo = new THREE.SphereGeometry(0.24, 10, 10);
       const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
       this.core = new THREE.Mesh(geo, mat);
@@ -1513,7 +1515,6 @@ class MagicProjectile {
       this.glow = new THREE.Mesh(auraGeo, auraMat);
       this.group.add(this.glow);
     } else if (this.bulletType === 'bone') {
-      // ボーンブーメラン
       const shaftGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.45, 6);
       const mat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
       this.bone = new THREE.Mesh(shaftGeo, mat);
@@ -1534,13 +1535,11 @@ class MagicProjectile {
       c4.position.set(0.22, -0.05, 0);
       this.group.add(c4);
     } else if (this.bulletType === 'laser') {
-      // 電光レーザー
       const geo = new THREE.BoxGeometry(0.12, 0.12, 0.75);
       const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
       this.mesh = new THREE.Mesh(geo, mat);
       this.group.add(this.mesh);
     } else if (this.bulletType === 'rainbow') {
-      // レインボースター
       const geo = new THREE.OctahedronGeometry(0.24, 0);
       const mat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
       this.mesh = new THREE.Mesh(geo, mat);
@@ -1551,13 +1550,11 @@ class MagicProjectile {
       this.glow = new THREE.Mesh(auraGeo, auraMat);
       this.group.add(this.glow);
     } else if (this.bulletType === 'mud') {
-      // マッドボム
       const geo = new THREE.SphereGeometry(0.22, 8, 8);
       const mat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.5 });
       this.mesh = new THREE.Mesh(geo, mat);
       this.group.add(this.mesh);
     } else {
-      // 通常魔法弾 (フェアリー)
       const coreGeo = new THREE.SphereGeometry(0.18, 12, 12);
       const coreMat = new THREE.MeshBasicMaterial({ color: 0xfdf2f8 });
       this.core = new THREE.Mesh(coreGeo, coreMat);
@@ -1593,7 +1590,6 @@ class MagicProjectile {
 
     this.group.position.addScaledVector(this.velocity, delta);
 
-    // 回転エフェクト (ボーンや岩石、スター)
     this.group.rotation.x += delta * 14;
     this.group.rotation.y += delta * 16;
 
@@ -1645,7 +1641,7 @@ class ProjectileManager {
   }
 }
 
-// 固有ペットクラス (全7種対応)
+// 固有ペットクラス (全7種)
 class BuddyPet {
   constructor(player, petType = 'fairy', slotIndex = 0) {
     this.player = player;
@@ -1659,7 +1655,7 @@ class BuddyPet {
     scene.add(this.group);
 
     this.hoverTime = Math.random() * 10;
-    this.attackTimer = Math.random() * 1.5; // 初期攻撃タイミングを少しずらす
+    this.attackTimer = Math.random() * 1.5;
     this.attackCooldown = this.petData.attackInterval || 3.0;
     this.shootAnimationTimer = 0;
 
@@ -1667,7 +1663,6 @@ class BuddyPet {
   }
 
   buildMesh() {
-    // 既存の子メッシュを破棄
     while (this.group.children.length > 0) {
       const child = this.group.children[0];
       this.group.remove(child);
@@ -1676,27 +1671,22 @@ class BuddyPet {
     }
 
     if (this.petType === 'gorilla') {
-      // 🦍 ゴリラ (屈強なマッスルシルバーバック)
-      const furMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.8 }); // 黒灰毛皮
-      const skinMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.6 }); // 顔・胸
-      const silverMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.5 }); // 背中シルバー
+      const furMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.8 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.6 });
+      const silverMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.5 });
 
-      // 胴体
       this.body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.5), furMat);
       this.body.castShadow = true;
       this.group.add(this.body);
 
-      // 胸筋
       const chest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.35, 0.1), skinMat);
       chest.position.set(0, 0.05, 0.22);
       this.body.add(chest);
 
-      // 背中のシルバーバック
       const back = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.08), silverMat);
       back.position.set(0, 0, -0.22);
       this.body.add(back);
 
-      // 頭部
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.32, 0.35), furMat);
       head.position.set(0, 0.38, 0.1);
       this.body.add(head);
@@ -1705,7 +1695,6 @@ class BuddyPet {
       face.position.set(0, -0.04, 0.16);
       head.add(face);
 
-      // 太い腕
       const armGeo = new THREE.BoxGeometry(0.2, 0.5, 0.2);
       const lArm = new THREE.Mesh(armGeo, furMat);
       lArm.position.set(-0.35, -0.05, 0.1);
@@ -1715,26 +1704,22 @@ class BuddyPet {
       this.body.add(rArm);
 
     } else if (this.petType === 'lion') {
-      // 🦁 ライオン (黄金の百獣の王)
-      const furMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 }); // 黄金
-      const maneMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 }); // 赤茶のたてがみ
+      const furMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 });
+      const maneMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 });
       const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
 
       this.body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.42, 0.55), furMat);
       this.body.castShadow = true;
       this.group.add(this.body);
 
-      // たてがみ (重厚なフレーム)
       const mane = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.25), maneMat);
       mane.position.set(0, 0.15, 0.22);
       this.body.add(mane);
 
-      // 頭部
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.32), furMat);
       head.position.set(0, 0.15, 0.32);
       this.body.add(head);
 
-      // 耳
       const earGeo = new THREE.BoxGeometry(0.08, 0.08, 0.04);
       const lEar = new THREE.Mesh(earGeo, maneMat);
       lEar.position.set(-0.16, 0.18, 0);
@@ -1743,7 +1728,6 @@ class BuddyPet {
       rEar.position.set(0.16, 0.18, 0);
       head.add(rEar);
 
-      // 目
       const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
       lEye.position.set(-0.1, 0.05, 0.16);
       head.add(lEye);
@@ -1751,14 +1735,12 @@ class BuddyPet {
       rEye.position.set(0.1, 0.05, 0.16);
       head.add(rEye);
 
-      // 尻尾
       const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.35), furMat);
       tail.position.set(0, 0.1, -0.38);
       tail.rotation.x = -0.4;
       this.body.add(tail);
 
     } else if (this.petType === 'pig') {
-      // 🐷 豚 (ピンクの幸運ピギー)
       const skinMat = new THREE.MeshStandardMaterial({ color: 0xfb7185, roughness: 0.4 });
       const snoutMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.5 });
       const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
@@ -1767,12 +1749,10 @@ class BuddyPet {
       this.body.castShadow = true;
       this.group.add(this.body);
 
-      // ブタ鼻 (スナウト)
       const snout = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.12), snoutMat);
       snout.position.set(0, -0.02, 0.32);
       this.body.add(snout);
 
-      // 垂れ耳
       const earGeo = new THREE.BoxGeometry(0.12, 0.16, 0.04);
       const lEar = new THREE.Mesh(earGeo, snoutMat);
       lEar.position.set(-0.2, 0.24, 0.08);
@@ -1783,7 +1763,6 @@ class BuddyPet {
       rEar.rotation.z = -0.4;
       this.body.add(rEar);
 
-      // 目
       const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), eyeMat);
       lEye.position.set(-0.12, 0.08, 0.28);
       this.body.add(lEye);
@@ -1792,36 +1771,30 @@ class BuddyPet {
       this.body.add(rEye);
 
     } else if (this.petType === 'dog') {
-      // 🐶 犬 (シバイヌ)
-      const furMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 }); // 茶柴
-      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffedd5, roughness: 0.5 }); // 白毛
+      const furMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 });
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffedd5, roughness: 0.5 });
       const noseMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
 
       this.body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.5), furMat);
       this.body.castShadow = true;
       this.group.add(this.body);
 
-      // 胸の白毛
       const chest = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.08), whiteMat);
       chest.position.set(0, -0.05, 0.23);
       this.body.add(chest);
 
-      // 頭部
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.34), furMat);
       head.position.set(0, 0.2, 0.25);
       this.body.add(head);
 
-      // マズル
       const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.16), whiteMat);
       muzzle.position.set(0, -0.06, 0.2);
       head.add(muzzle);
 
-      // 鼻
       const nose = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), noseMat);
       nose.position.set(0, 0.02, 0.1);
       muzzle.add(nose);
 
-      // 三角耳
       const earGeo = new THREE.ConeGeometry(0.08, 0.18, 4);
       const lEar = new THREE.Mesh(earGeo, furMat);
       lEar.position.set(-0.14, 0.22, -0.02);
@@ -1830,35 +1803,30 @@ class BuddyPet {
       rEar.position.set(0.14, 0.22, -0.02);
       head.add(rEar);
 
-      // 巻き尻尾
       const tail = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 6, 12, Math.PI * 1.3), furMat);
       tail.position.set(0, 0.18, -0.28);
       tail.rotation.y = Math.PI / 2;
       this.body.add(tail);
 
     } else if (this.petType === 'cheetah') {
-      // 🐆 チーター (スレンダーハンター)
-      const furMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4 }); // 黄褐色
-      const spotMat = new THREE.MeshStandardMaterial({ color: 0x18181b }); // 斑点
+      const furMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4 });
+      const spotMat = new THREE.MeshStandardMaterial({ color: 0x18181b });
       const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
 
       this.body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.35, 0.6), furMat);
       this.body.castShadow = true;
       this.group.add(this.body);
 
-      // 斑点ドット
       for (let i = 0; i < 6; i++) {
         const spot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), spotMat);
         spot.position.set((Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.5);
         this.body.add(spot);
       }
 
-      // スタイリッシュ頭部
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.28, 0.3), furMat);
       head.position.set(0, 0.16, 0.35);
       this.body.add(head);
 
-      // 青く光る目
       const lEye = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), eyeMat);
       lEye.position.set(-0.08, 0.04, 0.16);
       head.add(lEye);
@@ -1866,39 +1834,33 @@ class BuddyPet {
       rEye.position.set(0.08, 0.04, 0.16);
       head.add(rEye);
 
-      // 長い尾
       const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.45, 6), furMat);
       tail.position.set(0, 0.1, -0.45);
       tail.rotation.x = -0.6;
       this.body.add(tail);
 
     } else if (this.petType === 'unicorn') {
-      // 🦄 ユニコーン (虹色角の聖獣)
       const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.1, emissive: 0xa855f7, emissiveIntensity: 0.2 });
       const maneMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-      const hornMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 }); // 黄金の角
+      const hornMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
 
       this.body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.55), whiteMat);
       this.body.castShadow = true;
       this.group.add(this.body);
 
-      // 頭部
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.38, 0.36), whiteMat);
       head.position.set(0, 0.22, 0.3);
       this.body.add(head);
 
-      // 黄金のツノ
       const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.38, 6), hornMat);
       horn.position.set(0, 0.32, 0.12);
       horn.rotation.x = 0.3;
       head.add(horn);
 
-      // たてがみ
       const mane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.25), maneMat);
       mane.position.set(0, 0.15, -0.15);
       head.add(mane);
 
-      // 光の翼
       const wingGeo = new THREE.BoxGeometry(0.35, 0.18, 0.02);
       const wingMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
       this.leftWing = new THREE.Mesh(wingGeo, wingMat);
@@ -1909,7 +1871,6 @@ class BuddyPet {
       this.body.add(this.rightWing);
 
     } else {
-      // 🧚 フェアリー (標準精霊)
       const bodyMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.3,
@@ -1977,12 +1938,10 @@ class BuddyPet {
   update(delta) {
     this.hoverTime += delta;
 
-    // フォーメーション追従位置
     const offsetConfig = CONFIG.petOffsets[this.slotIndex] || CONFIG.petOffsets[0];
     const playerRot = this.player.group.rotation.y;
     const worldOffset = offsetConfig.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), playerRot);
 
-    // 浮遊モーション (スロットごとに周期を少しずらす)
     const bobbing = Math.sin(this.hoverTime * 3.5 + this.slotIndex * 1.5) * 0.18;
     const targetPos = this.player.group.position.clone().add(worldOffset);
     targetPos.y += bobbing;
@@ -1992,7 +1951,6 @@ class BuddyPet {
 
     this.group.position.lerp(targetPos, Math.min(delta * speedFactor, 1.0));
 
-    // 敵またはプレイヤーの前方を向く
     let lookTarget = null;
     const nearestEnemy = this.findNearestZombie();
     if (nearestEnemy) {
@@ -2010,7 +1968,6 @@ class BuddyPet {
       this.group.rotation.y += diff * Math.min(delta * 8.0, 1.0);
     }
 
-    // 羽ばたき等のモーション
     if (this.leftWing && this.rightWing) {
       const wingFlap = Math.sin(this.hoverTime * 14) * 0.45;
       this.leftWing.rotation.y = wingFlap;
@@ -2020,7 +1977,6 @@ class BuddyPet {
       this.auraRing.rotation.z += delta * 1.8;
     }
 
-    // 射撃パルス
     if (this.shootAnimationTimer > 0) {
       this.shootAnimationTimer -= delta;
       const t = Math.max(this.shootAnimationTimer / 0.25, 0);
@@ -2029,7 +1985,6 @@ class BuddyPet {
       if (this.body) this.body.scale.set(1.0, 1.0, 1.0);
     }
 
-    // 索敵 & 攻撃
     this.attackTimer += delta;
     if (this.attackTimer >= this.attackCooldown) {
       if (nearestEnemy) {
@@ -2084,7 +2039,6 @@ class PetManager {
   }
 
   rebuild(petIds) {
-    // 既存のペットを破棄
     this.pets.forEach(p => p.destroy());
     this.pets = [];
 
@@ -2141,7 +2095,7 @@ class CameraController {
 }
 
 // =============================================================================
-// 13. UI & タッチ操作
+// 13. UI & タッチ操作 (iPad / Safari 最適化)
 // =============================================================================
 function setupControls(player) {
   const joystickZone = document.getElementById('joystick-zone');
@@ -2176,6 +2130,7 @@ function setupControls(player) {
 
     joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
 
+    // 画面上の右(+X)と上(+Y)に正規化
     state.moveVector.x = knobX / maxRadius;
     state.moveVector.y = -knobY / maxRadius;
   }
@@ -2274,7 +2229,6 @@ function updateHUD(worldPos) {
   if (coinEl) coinEl.innerText = state.coins;
   if (shopCoinEl) shopCoinEl.innerText = state.coins;
 
-  // 編成中のペットアイコン表示
   if (buddyStatusEl && saveData.equipped.pets) {
     const icons = saveData.equipped.pets.map(p => ITEMS_DATA.pets[p]?.icon || '🧚').join('');
     buddyStatusEl.innerText = `${icons} (${saveData.equipped.pets.length}/3)`;
@@ -2474,7 +2428,6 @@ class ShopUI {
     });
   }
 
-  // ペット専用タブのレンダリング (最大3体編成)
   renderPetTab() {
     const equippedPets = saveData.equipped.pets || [];
     const unlockedPets = saveData.unlocked.pets || ['fairy'];
@@ -2487,7 +2440,6 @@ class ShopUI {
       const card = document.createElement('div');
       card.className = `item-card ${isEquipped ? 'is-equipped' : ''}`;
 
-      // 編成中スロットバッジ
       if (isEquipped) {
         const badge = document.createElement('span');
         badge.className = 'item-badge-slot';
@@ -2530,7 +2482,6 @@ class ShopUI {
       actionRow.className = 'item-action-row';
 
       if (isEquipped) {
-        // 編成中: 「外す」ボタン（1体だけの場合は外せない）
         const unequipBtn = document.createElement('button');
         unequipBtn.className = 'item-btn item-btn-unequip';
         unequipBtn.innerText = '✕ 外す';
@@ -2545,7 +2496,6 @@ class ShopUI {
         });
         actionRow.appendChild(unequipBtn);
       } else if (isUnlocked) {
-        // 所持済み & 未編成
         const equipBtn = document.createElement('button');
         equipBtn.className = 'item-btn item-btn-equip';
 
@@ -2565,7 +2515,6 @@ class ShopUI {
         }
         actionRow.appendChild(equipBtn);
       } else {
-        // 未所持: 購入ボタン
         const buyBtn = document.createElement('button');
         buyBtn.className = 'item-btn item-btn-buy';
         buyBtn.innerHTML = `購入 🪙${item.price}`;
@@ -2595,7 +2544,6 @@ class ShopUI {
       saveData.unlocked.pets.push(item.id);
     }
 
-    // 3体未満なら自動編成
     if (saveData.equipped.pets.length < 3) {
       saveData.equipped.pets.push(item.id);
       this.petManager.rebuild(saveData.equipped.pets);
