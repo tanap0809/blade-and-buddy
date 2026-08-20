@@ -23,15 +23,65 @@
   <!-- 3Dゲーム画面コンテナ -->
   <div id="game-container"></div>
 
+  <!-- 紙吹雪用Canvas（お祝い演出用） -->
+  <canvas id="confetti-canvas" class="confetti-canvas"></canvas>
+
   <!-- 被弾時の画面赤フラッシュオーバーレイ -->
   <div id="damage-overlay" class="damage-overlay"></div>
 
-  <!-- UIレイヤー -->
-  <div id="ui-layer">
-    <!-- ヘッダー（HP/MPバー、ボスバー、キル数、コイン、ショップ、サウンド） -->
+  <!-- ボス出現警報バナー -->
+  <div id="boss-warning-banner" class="boss-warning-banner hidden">
+    <div class="warning-text">⚠️ BOSS WARNING!! ⚠️</div>
+  </div>
+
+  <!-- =============================================================================
+       タイトル画面 (Title Screen)
+       ============================================================================= -->
+  <div id="title-screen" class="title-screen">
+    <div class="title-backdrop"></div>
+    <div class="title-content">
+      <div class="title-emblem">⚔️🏰✨</div>
+      <h1 class="title-main">BLADE & BUDDY</h1>
+      <p class="title-subtitle">〜 ダンジョン無双クロニクル 〜</p>
+
+      <div class="title-menu">
+        <button id="btn-title-start" class="title-btn btn-start">
+          <span class="btn-icon">⚔️</span>
+          <span class="btn-text">ゲームスタート (START)</span>
+        </button>
+        <button id="btn-title-shop" class="title-btn btn-shop">
+          <span class="btn-icon">🛒</span>
+          <span class="btn-text">ショップ & 魔法強化 (SHOP)</span>
+        </button>
+        <button id="btn-title-options" class="title-btn btn-options">
+          <span class="btn-icon">⚙️</span>
+          <span class="btn-text">オプション設定 (OPTIONS)</span>
+        </button>
+        <button id="btn-title-howto" class="title-btn btn-howto">
+          <span class="btn-icon">📖</span>
+          <span class="btn-text">遊び方・操作説明 (HOW TO PLAY)</span>
+        </button>
+      </div>
+
+      <div class="title-footer">
+        <span>所持コイン: 🪙 <strong id="title-coin-display">0</strong></span>
+        <span class="version-tag">Ver 2.5 - Full 3D Action RPG</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================================================================
+       インゲーム UIレイヤー
+       ============================================================================= -->
+  <div id="ui-layer" class="hidden">
+    <!-- ヘッダー（HP/MPバー、ステージバッジ、ボスバー、スコア、ショップ、メニュー） -->
     <header class="game-header">
-      <!-- プレイヤーHP / MPステータス -->
+      <!-- プレイヤーHP / MPステータス & ステージ情報 -->
       <div class="player-status-card">
+        <div class="stage-badge-row">
+          <span id="stage-badge" class="stage-badge">STAGE 1: 崩落の古代遺跡</span>
+          <span id="stage-progress" class="stage-progress">討伐: 0/10</span>
+        </div>
         <div class="status-row hp-row">
           <span class="status-label">❤️ HP</span>
           <div class="bar-container">
@@ -64,7 +114,7 @@
         </div>
       </div>
 
-      <!-- 右側コントロール（スコア・コイン・ショップ・BGM） -->
+      <!-- 右側コントロール（スコア・コイン・ショップ・メニュー） -->
       <div class="stats-container">
         <div class="stat-card kills-card">
           <span class="stat-icon">💀</span>
@@ -80,9 +130,9 @@
           <span class="shop-icon">🛒</span>
           <span class="shop-text">SHOP</span>
         </button>
-        <button id="btn-toggle-sound" class="sound-btn" aria-label="サウンド切り替え">
-          <span id="sound-icon" class="sound-icon">🎵</span>
-          <span id="sound-status-text" class="sound-text">BGM ON</span>
+        <button id="btn-open-menu" class="menu-btn" aria-label="メニューを開く">
+          <span class="menu-icon">⚙️</span>
+          <span class="menu-text">MENU</span>
         </button>
       </div>
     </header>
@@ -94,7 +144,7 @@
       </div>
     </div>
 
-    <!-- 5大属性魔法クイックスロットパレット（画面右下・攻撃ボタン周辺） -->
+    <!-- 5大属性魔法クイックスロットパレット（画面右下・攻撃ボタン上部） -->
     <div id="magic-palette" class="magic-palette">
       <button id="btn-magic-explosion" class="magic-btn btn-explosion" data-magic="explosion" aria-label="爆発魔法">
         <span class="magic-icon">💥</span>
@@ -128,8 +178,16 @@
       </button>
     </div>
 
-    <!-- 攻撃ボタン（画面右下） -->
+    <!-- 攻撃ボタン + ダッシュボタン（画面右下） -->
     <div id="action-zone" class="action-zone">
+      <!-- ダッシュボタン -->
+      <button id="btn-dash" class="dash-btn" aria-label="ダッシュ">
+        <div class="dash-cooldown-overlay"></div>
+        <span class="dash-icon">💨</span>
+        <span class="dash-label">DASH</span>
+        <span class="key-hint-space">SHIFT</span>
+      </button>
+      <!-- 攻撃（斬撃）ボタン -->
       <button id="btn-attack" class="attack-btn" aria-label="斬撃攻撃">
         <span class="attack-icon">⚔️</span>
         <span class="attack-label">SLASH</span>
@@ -138,7 +196,97 @@
     </div>
   </div>
 
-  <!-- ショップモーダル -->
+  <!-- =============================================================================
+       ボス撃破お祝いモーダル (Victory & Stage Clear Modal)
+       ============================================================================= -->
+  <div id="victory-modal" class="victory-modal hidden">
+    <div class="victory-backdrop"></div>
+    <div class="victory-card">
+      <div class="victory-crown">👑🎉</div>
+      <h2 class="victory-title">BOSS DEFEATED!!</h2>
+      <p class="victory-subtitle" id="victory-stage-name">STAGE 1 CLEAR!</p>
+      
+      <div class="victory-reward-badge">
+        <span>ステージクリア報酬:</span>
+        <strong>🪙 +100 COINS!</strong>
+      </div>
+
+      <p class="victory-next-info">次のステージへ突入します…</p>
+    </div>
+  </div>
+
+  <!-- =============================================================================
+       オプション設定モーダル
+       ============================================================================= -->
+  <div id="options-modal" class="modal-wrapper hidden">
+    <div class="modal-backdrop" id="options-backdrop"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>⚙️ オプション設定</h2>
+        <button id="btn-close-options" class="close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="option-row">
+          <span class="opt-label">🎵 BGM 音量</span>
+          <input type="range" id="slider-bgm" min="0" max="100" value="50" class="opt-slider">
+          <span id="text-bgm-val" class="opt-val">50%</span>
+        </div>
+        <div class="option-row">
+          <span class="opt-label">🔊 効果音 (SE) 音量</span>
+          <input type="range" id="slider-sfx" min="0" max="100" value="80" class="opt-slider">
+          <span id="text-sfx-val" class="opt-val">80%</span>
+        </div>
+        <div class="option-row">
+          <span class="opt-label">🕹️ 操作感度</span>
+          <input type="range" id="slider-sensitivity" min="50" max="150" value="100" class="opt-slider">
+          <span id="text-sens-val" class="opt-val">100%</span>
+        </div>
+        <hr class="modal-divider">
+        <button id="btn-return-title" class="btn-danger-wide">
+          🏠 タイトル画面に戻る
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================================================================
+       遊び方・ヘルプモーダル
+       ============================================================================= -->
+  <div id="howto-modal" class="modal-wrapper hidden">
+    <div class="modal-backdrop" id="howto-backdrop"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>📖 遊び方・操作説明</h2>
+        <button id="btn-close-howto" class="close-btn">✕</button>
+      </div>
+      <div class="modal-body help-body">
+        <div class="help-section">
+          <h3>🎮 基本操作</h3>
+          <p>・<strong>移動</strong>: 左下ジョイスティック または <code>WASD</code> / <code>矢印キー</code></p>
+          <p>・<strong>斬撃攻撃</strong>: 右下SLASHボタン または <code>SPACE</code> / <code>Jキー</code></p>
+          <p>・<strong>ダッシュ</strong>: 右下DASHボタン または <code>Shift</code> / <code>Xキー</code> (3秒でリチャージ)</p>
+          <p>・<strong>3段コンボ</strong>: 連続入力で「袈裟斬り」→「連撃」→「水平大薙ぎ払い」へと強化！</p>
+        </div>
+        <div class="help-section">
+          <h3>🔮 5大属性魔法</h3>
+          <p>・時間経過でMPが自動回復！右下アイコン または <code>Q/E/R/F/C</code> で即時発動。</p>
+          <p>・ショップで各魔法を最大3段階まで超絶強化可能！</p>
+        </div>
+        <div class="help-section">
+          <h3>⚡ 敵の弱点属性</h3>
+          <p>・ゾンビ: 🔥<strong>炎弱点</strong> (氷耐性)</p>
+          <p>・お化け: ⚡<strong>雷弱点</strong> (風耐性)</p>
+          <p>・ゴブリン: 💥<strong>爆発弱点</strong> (雷耐性)</p>
+          <p>・キングゴブリン: ❄️<strong>氷弱点</strong> (爆発耐性)</p>
+          <p>・デーモン: 🌪️<strong>風弱点</strong> (炎耐性)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============================================================================
+       ショップモーダル
+       ============================================================================= -->
   <div id="shop-modal" class="shop-modal hidden">
     <div class="shop-backdrop" id="shop-backdrop"></div>
     <div class="shop-content">
@@ -154,7 +302,6 @@
         <button id="btn-close-shop" class="close-btn" aria-label="閉じる">✕</button>
       </div>
 
-      <!-- タブ切り替え（衣装・頭装備・刀・ペット・魔法強化） -->
       <div class="shop-tabs">
         <button class="shop-tab active" data-tab="magic">🔮 魔法強化</button>
         <button class="shop-tab" data-tab="outfit">🛡️ アーマー衣装</button>
@@ -163,12 +310,13 @@
         <button class="shop-tab" data-tab="pet">🧚 バディペット</button>
       </div>
 
-      <!-- アイテム・魔法一覧グリッド -->
       <div id="shop-items-grid" class="shop-items-grid"></div>
     </div>
   </div>
 
-  <!-- GAME OVER モーダル -->
+  <!-- =============================================================================
+       GAME OVER モーダル
+       ============================================================================= -->
   <div id="gameover-modal" class="gameover-modal hidden">
     <div class="gameover-backdrop"></div>
     <div class="gameover-card">
@@ -177,6 +325,10 @@
       <p class="gameover-sub">ダンジョンの闇に呑み込まれた…</p>
 
       <div class="gameover-stats">
+        <div class="go-stat-row">
+          <span>到達ステージ:</span>
+          <strong id="go-stage">STAGE 1</strong>
+        </div>
         <div class="go-stat-row">
           <span>討伐モンスター数:</span>
           <strong id="go-kills">0</strong>
@@ -187,15 +339,19 @@
         </div>
       </div>
 
-      <button id="btn-retry" class="btn-retry">
-        <span>⚔️ 復活して再挑戦 (REVIVE)</span>
-      </button>
+      <div class="gameover-actions">
+        <button id="btn-retry" class="btn-retry">
+          <span>⚔️ 復活して再挑戦 (REVIVE)</span>
+        </button>
+        <button id="btn-gameover-title" class="btn-secondary-wide">
+          🏠 タイトルに戻る
+        </button>
+      </div>
     </div>
   </div>
 
   <script src="main.js"></script>
   <script>
-    // Service Worker Registration for PWA
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
