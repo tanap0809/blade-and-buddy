@@ -1,6 +1,6 @@
 /**
- * Blade & Buddy - 3D Action Game Prototype
- * Three.js (CDN) + GLTFLoader + iPad Safari Touch Controls + Cyber Shop & Multi-Pet Team System + Dynamic Web Audio & Cyber City Stage
+ * Blade & Buddy - 3D Dungeon Action Game
+ * Detailed Dungeon Environment + High-Detail Hero & Undead Skins + Dynamic Web Audio + Multi-Pet System
  */
 
 // =============================================================================
@@ -69,7 +69,116 @@ const state = {
 };
 
 // =============================================================================
-// 1.8 Web Audio API 動的シンセBGM & SEエンジン
+// 1.2 プロシージャルテクスチャ生成器 (リアルな石畳・石レンガ・木目)
+// =============================================================================
+class TextureGenerator {
+  static createStoneFloorTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // 下地（深い石のダークグレー）
+    ctx.fillStyle = '#1c1f26';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // 石畳タイルの描画
+    const tileSize = 64;
+    const cols = 512 / tileSize;
+    const rows = 512 / tileSize;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = c * tileSize + (r % 2 === 1 ? tileSize / 2 : 0);
+        const y = r * tileSize;
+
+        // 石ごとの微小な色むら
+        const lum = Math.floor(25 + Math.random() * 20);
+        ctx.fillStyle = `rgb(${lum + 5}, ${lum + 8}, ${lum + 12})`;
+        ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+
+        // タイル内のノイズとひび割れ
+        for (let n = 0; n < 30; n++) {
+          const nx = x + 4 + Math.random() * (tileSize - 8);
+          const ny = y + 4 + Math.random() * (tileSize - 8);
+          const nSize = Math.random() * 4 + 1;
+          ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)';
+          ctx.fillRect(nx, ny, nSize, nSize);
+        }
+
+        // ひび割れライン
+        if (Math.random() > 0.6) {
+          ctx.strokeStyle = 'rgba(10, 12, 16, 0.6)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(x + tileSize * 0.3, y + 4);
+          ctx.lineTo(x + tileSize * 0.5, y + tileSize * 0.5);
+          ctx.lineTo(x + tileSize * 0.8, y + tileSize - 4);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 目地（黒ずみ）
+    ctx.strokeStyle = '#0d0f14';
+    ctx.lineWidth = 3;
+    for (let r = 0; r <= rows; r++) {
+      ctx.beginPath();
+      ctx.moveTo(0, r * tileSize);
+      ctx.lineTo(512, r * tileSize);
+      ctx.stroke();
+    }
+    for (let c = 0; c <= cols * 1.5; c++) {
+      ctx.beginPath();
+      ctx.moveTo(c * tileSize, 0);
+      ctx.lineTo(c * tileSize, 512);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(12, 12);
+    return tex;
+  }
+
+  static createBrickWallTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#181b22';
+    ctx.fillRect(0, 0, 256, 256);
+
+    const bHeight = 32;
+    const bWidth = 64;
+
+    for (let y = 0; y < 256; y += bHeight) {
+      const offset = (y / bHeight) % 2 === 1 ? bWidth / 2 : 0;
+      for (let x = -bWidth; x < 256 + bWidth; x += bWidth) {
+        const lum = 35 + Math.floor(Math.random() * 20);
+        ctx.fillStyle = `rgb(${lum}, ${lum + 4}, ${lum + 8})`;
+        ctx.fillRect(x + offset + 2, y + 2, bWidth - 4, bHeight - 4);
+
+        // 苔/古びた汚れ
+        if (Math.random() > 0.4) {
+          ctx.fillStyle = 'rgba(15, 30, 20, 0.4)';
+          ctx.fillRect(x + offset + 4, y + bHeight - 8, bWidth - 8, 4);
+        }
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(4, 2);
+    return tex;
+  }
+}
+
+// =============================================================================
+// 1.8 Web Audio API ダンジョンBGM & SEエンジン
 // =============================================================================
 class SoundManager {
   constructor() {
@@ -79,7 +188,7 @@ class SoundManager {
     this.bgmGain = null;
     this.sfxGain = null;
     this.masterGain = null;
-    this.tempo = 132; // BPM
+    this.tempo = 126;
     this.step = 0;
     this.nextNoteTime = 0;
     this.timerId = null;
@@ -92,15 +201,15 @@ class SoundManager {
     this.ctx = new AudioCtx();
 
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(0.75, this.ctx.currentTime);
     this.masterGain.connect(this.ctx.destination);
 
     this.bgmGain = this.ctx.createGain();
-    this.bgmGain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+    this.bgmGain.gain.setValueAtTime(0.38, this.ctx.currentTime);
     this.bgmGain.connect(this.masterGain);
 
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.setValueAtTime(0.6, this.ctx.currentTime);
+    this.sfxGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
     this.sfxGain.connect(this.masterGain);
   }
 
@@ -117,7 +226,7 @@ class SoundManager {
   toggleMute() {
     this.isMuted = !this.isMuted;
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.7, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.75, this.ctx.currentTime);
     }
     const btn = document.getElementById('btn-toggle-sound');
     const text = document.getElementById('sound-status-text');
@@ -129,7 +238,6 @@ class SoundManager {
     if (!this.isMuted) this.unlock();
   }
 
-  // BGMスケジューラー
   startBGM() {
     if (this.isPlayingBGM || !this.ctx) return;
     this.isPlayingBGM = true;
@@ -145,7 +253,7 @@ class SoundManager {
       const secondsPerBeat = 60.0 / this.tempo;
       const secondsPer16th = secondsPerBeat / 4.0;
       this.nextNoteTime += secondsPer16th;
-      this.step = (this.step + 1) % 64; // 4小節（64ステップ）ループ
+      this.step = (this.step + 1) % 64;
     }
     this.timerId = setTimeout(() => this.scheduler(), 35);
   }
@@ -156,83 +264,68 @@ class SoundManager {
     const beatInBar = step % 16;
     const bar = Math.floor(step / 16);
 
-    // 1. ドラムトラック
-    // キック (1拍目, 5拍目, 9拍目, 13拍目)
-    if (beatInBar === 0 || beatInBar === 8 || (bar % 2 === 1 && (beatInBar === 6 || beatInBar === 14))) {
-      this.synthKick(time);
+    // 1. ダンジョン太鼓/パーカッション
+    if (beatInBar === 0 || beatInBar === 8 || (bar % 2 === 1 && beatInBar === 10)) {
+      this.synthDungeonDrum(time, beatInBar === 0 ? 90 : 70);
     }
-    // スネア (5拍目, 13拍目 = 2拍・4拍目)
     if (beatInBar === 4 || beatInBar === 12) {
       this.synthSnare(time);
     }
-    // ハイハット (偶数ステップ)
     if (beatInBar % 2 === 0) {
-      this.synthHihat(time, beatInBar % 4 === 2 ? 0.35 : 0.18);
+      this.synthHihat(time, beatInBar % 4 === 2 ? 0.28 : 0.15);
     }
 
-    // 2. シンセベーストラック (エネルギッシュなサイバーベースライン)
+    // 2. 重厚なダンジョンベースライン (Dマイナー / Aマイナー)
     const baseNotes = [
-      // Bar 0: D (73.42 Hz)
-      73.42, 73.42, 146.83, 73.42, 73.42, 73.42, 110.0, 73.42,
-      73.42, 73.42, 146.83, 73.42, 82.41, 98.0, 110.0, 130.81,
-      // Bar 1: F (87.31 Hz)
-      87.31, 87.31, 174.61, 87.31, 87.31, 87.31, 130.81, 87.31,
-      87.31, 87.31, 174.61, 87.31, 98.0, 110.0, 130.81, 146.83,
-      // Bar 2: G (98.00 Hz)
-      98.0, 98.0, 196.0, 98.0, 98.0, 98.0, 146.83, 98.0,
-      98.0, 98.0, 196.0, 98.0, 110.0, 130.81, 146.83, 164.81,
-      // Bar 3: A -> C (110.0 -> 130.81 Hz)
-      110.0, 110.0, 220.0, 110.0, 110.0, 110.0, 164.81, 110.0,
-      130.81, 130.81, 261.63, 130.81, 146.83, 164.81, 196.0, 220.0,
+      73.42, 73.42, 110.0, 73.42, 73.42, 73.42, 87.31, 73.42,
+      73.42, 73.42, 110.0, 73.42, 65.41, 73.42, 87.31, 98.0,
+      65.41, 65.41, 98.0, 65.41, 65.41, 65.41, 87.31, 65.41,
+      87.31, 87.31, 130.81, 87.31, 98.0, 110.0, 130.81, 146.83,
     ];
-    const bassFreq = baseNotes[step];
+    const bassFreq = baseNotes[step % 32];
     if (bassFreq) {
-      this.synthBass(bassFreq, time, 0.12);
+      this.synthBass(bassFreq, time, 0.14);
     }
 
-    // 3. リードメロディ / アルペジオトラック
-    const melodyScale = [293.66, 329.63, 349.23, 440.0, 523.25, 587.33, 659.25, 698.46, 880.0];
-    const arpeggioPattern = [0, 2, 4, 7, 5, 4, 2, 4, 1, 3, 5, 8, 6, 5, 3, 5];
-    const noteIdx = arpeggioPattern[beatInBar];
+    // 3. ミステリアスなダンジョンメロディ (ハープ/シンセベル風)
+    const melodyScale = [293.66, 329.63, 349.23, 440.0, 493.88, 523.25, 587.33, 698.46];
+    const arpeggio = [0, 2, 3, 5, 4, 3, 2, 3, 0, 3, 5, 7, 6, 5, 3, 2];
+    const noteIdx = arpeggio[beatInBar];
     const melodyFreq = melodyScale[noteIdx % melodyScale.length];
 
     if (step % 2 === 0 && melodyFreq) {
-      this.synthLead(melodyFreq, time, 0.08);
+      this.synthDungeonMelody(melodyFreq, time, 0.1);
     }
   }
 
-  // --- 音源合成メソッド ---
-  synthKick(time) {
+  synthDungeonDrum(time, startFreq = 85) {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, time);
-    osc.frequency.exponentialRampToValueAtTime(32, time + 0.12);
-    gain.gain.setValueAtTime(0.8, time);
-    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(startFreq, time);
+    osc.frequency.exponentialRampToValueAtTime(28, time + 0.16);
+    gain.gain.setValueAtTime(0.85, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.16);
     osc.connect(gain);
     gain.connect(this.bgmGain);
     osc.start(time);
-    osc.stop(time + 0.13);
+    osc.stop(time + 0.17);
   }
 
   synthSnare(time) {
-    // ノイズバースト
     const bufferSize = this.ctx.sampleRate * 0.1;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
 
     const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(1000, time);
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(900, time);
 
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.45, time);
+    gain.gain.setValueAtTime(0.4, time);
     gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
 
     noise.connect(filter);
@@ -252,7 +345,7 @@ class SoundManager {
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
-    filter.frequency.setValueAtTime(6500, time);
+    filter.frequency.setValueAtTime(7000, time);
 
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(vol, time);
@@ -265,7 +358,7 @@ class SoundManager {
     noise.stop(time + 0.04);
   }
 
-  synthBass(freq, time, dur = 0.12) {
+  synthBass(freq, time, dur = 0.14) {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     const filter = this.ctx.createBiquadFilter();
@@ -274,10 +367,10 @@ class SoundManager {
     osc.frequency.setValueAtTime(freq, time);
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(800, time);
-    filter.frequency.exponentialRampToValueAtTime(200, time + dur);
+    filter.frequency.setValueAtTime(650, time);
+    filter.frequency.exponentialRampToValueAtTime(150, time + dur);
 
-    gain.gain.setValueAtTime(0.35, time);
+    gain.gain.setValueAtTime(0.4, time);
     gain.gain.exponentialRampToValueAtTime(0.01, time + dur);
 
     osc.connect(filter);
@@ -287,13 +380,13 @@ class SoundManager {
     osc.stop(time + dur);
   }
 
-  synthLead(freq, time, dur = 0.08) {
+  synthDungeonMelody(freq, time, dur = 0.1) {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = 'square';
+    osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, time);
 
-    gain.gain.setValueAtTime(0.12, time);
+    gain.gain.setValueAtTime(0.14, time);
     gain.gain.exponentialRampToValueAtTime(0.005, time + dur);
 
     osc.connect(gain);
@@ -302,7 +395,6 @@ class SoundManager {
     osc.stop(time + dur);
   }
 
-  // --- アクション効果音 (SE) ---
   playAttackSlash() {
     if (!this.ctx || this.isMuted) return;
     const osc = this.ctx.createOscillator();
@@ -310,13 +402,13 @@ class SoundManager {
     const filter = this.ctx.createBiquadFilter();
 
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+    osc.frequency.setValueAtTime(750, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(90, this.ctx.currentTime + 0.15);
 
     filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(1200, this.ctx.currentTime);
+    filter.frequency.setValueAtTime(1400, this.ctx.currentTime);
 
-    gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.45, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
 
     osc.connect(filter);
@@ -331,16 +423,16 @@ class SoundManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(180, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.18);
+    osc.frequency.setValueAtTime(190, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(25, this.ctx.currentTime + 0.2);
 
-    gain.gain.setValueAtTime(0.6, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
 
     osc.connect(gain);
     gain.connect(this.sfxGain);
     osc.start();
-    osc.stop(this.ctx.currentTime + 0.19);
+    osc.stop(this.ctx.currentTime + 0.21);
   }
 
   playCoin() {
@@ -351,10 +443,10 @@ class SoundManager {
 
     osc1.type = 'sine';
     osc2.type = 'sine';
-    osc1.frequency.setValueAtTime(1318.51, this.ctx.currentTime); // E6
-    osc2.frequency.setValueAtTime(1975.53, this.ctx.currentTime + 0.07); // B6
+    osc1.frequency.setValueAtTime(1318.51, this.ctx.currentTime);
+    osc2.frequency.setValueAtTime(1975.53, this.ctx.currentTime + 0.07);
 
-    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
 
     osc1.connect(gain);
@@ -390,7 +482,7 @@ class SoundManager {
       osc.frequency.exponentialRampToValueAtTime(440, this.ctx.currentTime + 0.12);
     }
 
-    gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.28, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
 
     osc.connect(gain);
@@ -401,7 +493,7 @@ class SoundManager {
 
   playBuy() {
     if (!this.ctx || this.isMuted) return;
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C(hi)
+    const notes = [523.25, 659.25, 783.99, 1046.50];
     notes.forEach((freq, idx) => {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
@@ -423,7 +515,7 @@ class SoundManager {
     osc.type = 'square';
     osc.frequency.setValueAtTime(440, this.ctx.currentTime);
     osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.05);
-    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
     osc.connect(gain);
     gain.connect(this.sfxGain);
@@ -435,104 +527,109 @@ class SoundManager {
 const soundManager = new SoundManager();
 
 // =============================================================================
-// 2. ショップアイテム定義
+// 2. ショップアイテム定義 (ハイディテール衣装・兜・刀・ペット)
 // =============================================================================
 const ITEMS_DATA = {
   outfits: {
     default: {
       id: 'default',
-      name: 'サイバーブルー',
+      name: 'パラディン・アーマー',
       price: 0,
-      desc: '標準支給のサイバースーツ。バランスの良い耐刃仕様。',
-      icon: '🥋',
+      desc: '銀と藍の聖騎士甲冑。重厚な胸当てと肩当てが特徴。',
+      icon: '🛡️',
       heroColor: 0x2563eb,
+      armorColor: 0x64748b,
       darkColor: 0x0f172a,
-      visorColor: 0x38bdf8,
+      trimColor: 0x93c5fd,
     },
     crimson: {
       id: 'crimson',
-      name: 'クリムゾンレッド',
+      name: '狂戦士の紅蓮鎧',
       price: 50,
-      desc: '紅蓮の闘志を宿したスーツ。激戦をくぐり抜けた証。',
+      desc: '歴戦の血潮を宿した紅蓮のプレートアーマー。',
       icon: '🔴',
-      heroColor: 0xef4444,
-      darkColor: 0x450a0a,
-      visorColor: 0xfca5a5,
+      heroColor: 0xdc2626,
+      armorColor: 0x450a0a,
+      darkColor: 0x1f0606,
+      trimColor: 0xfca5a5,
     },
     shadow: {
       id: 'shadow',
-      name: 'シャドウブラック',
+      name: '黒影の忍装束',
       price: 100,
-      desc: '闇夜に溶け込む漆黒のステルスニンジャスーツ。',
+      desc: '深淵の闇に溶け込む暗殺者のハイテックニンジャスーツ。',
       icon: '🥷',
       heroColor: 0x18181b,
+      armorColor: 0x27272a,
       darkColor: 0x09090b,
-      visorColor: 0xa855f7,
+      trimColor: 0xa855f7,
     },
     gold: {
       id: 'gold',
-      name: 'ゴールデンナイト',
+      name: '黄金聖騎士甲冑',
       price: 200,
-      desc: '黄金の輝きを放つ高貴なバトルアーマー。',
+      desc: 'まばゆい黄金の装飾が施された伝説の聖騎士アーマー。',
       icon: '👑',
       heroColor: 0xeab308,
+      armorColor: 0xf59e0b,
       darkColor: 0x713f12,
-      visorColor: 0xfef08a,
+      trimColor: 0xfef08a,
     },
     neon_green: {
       id: 'neon_green',
-      name: 'ネオングリーン',
+      name: 'エメラルド・ヴァンガード',
       price: 120,
-      desc: '超高伝導のサイバーパンクスーツ。暗闇で蛍光発光。',
+      desc: '古代遺跡の秘石が埋め込まれた翠玉のバトルアーマー。',
       icon: '🟢',
-      heroColor: 0x10b981,
-      darkColor: 0x064e3b,
-      visorColor: 0x6ee7b7,
+      heroColor: 0x059669,
+      armorColor: 0x047857,
+      darkColor: 0x022c22,
+      trimColor: 0x6ee7b7,
     },
   },
   heads: {
     none: {
       id: 'none',
-      name: 'なし (標準バイザー)',
+      name: '標準バイザー・額当て',
       price: 0,
-      desc: '頭部パーツなしのすっきりしたスタイル。',
+      desc: '軽快なヘッドバンドと光るバイザー。',
       icon: '👤',
     },
     sunglasses: {
       id: 'sunglasses',
-      name: 'クールサングラス',
+      name: 'クールシェード',
       price: 40,
-      desc: '暗視・照準アシストを内蔵したスタイリッシュなサングラス。',
+      desc: 'ダンジョンの暗闇でも視界を確保するスタイリッシュシェード。',
       icon: '🕶️',
     },
     ninja_band: {
       id: 'ninja_band',
-      name: '忍のハチマキ',
+      name: '深紅の忍ハチマキ',
       price: 80,
-      desc: '風になびく紅いハチマキ。集中力と敏捷性を高める。',
+      desc: '風になびくロングテールハチマキ。集中力を極限まで高める。',
       icon: '🧣',
     },
     samurai_helm: {
       id: 'samurai_helm',
-      name: 'サムライ兜',
+      name: '重装サムライ兜',
       price: 150,
-      desc: '黄金の前立てが堂々と輝く伝統とハイテクの融合兜。',
+      desc: '黄金の前立てと鉄の吹き返しを備えた重厚な武者兜。',
       icon: '⛩️',
     },
     cyber_horns: {
       id: 'cyber_horns',
-      name: 'サイバーホーン',
+      name: 'デモンホーンクラウン',
       price: 180,
-      desc: '高出力ネオンエネルギーを放つサイバー角アンテナ。',
+      desc: '真紅に妖しく光る魔神の角冠。',
       icon: '😈',
     },
   },
   swords: {
     default: {
       id: 'default',
-      name: 'サイバーブレード',
+      name: '銀翼の騎士刀',
       price: 0,
-      desc: '青く発光する標準的な高周波サイバー刀。',
+      desc: '青白く輝く刃紋と真鍮の鍔を持つ美しい名刀。',
       icon: '🗡️',
       bladeColor: 0x38bdf8,
       emissive: 0x0284c7,
@@ -758,10 +855,7 @@ class ModelLoader {
 
   async loadGLTF(url) {
     if (!url) return null;
-    if (!this.loader) {
-      console.warn('GLTFLoader is not available in Three.js.');
-      return null;
-    }
+    if (!this.loader) return null;
 
     if (this.cache.has(url)) {
       return this.cloneGLTFData(this.cache.get(url));
@@ -813,18 +907,18 @@ class ModelLoader {
 const modelLoader = new ModelLoader();
 
 // =============================================================================
-// 4. Three.js 基本セットアップ & 美麗フォグ
+// 4. Three.js 基本セットアップ & ダンジョンフォグ
 // =============================================================================
 const container = document.getElementById('game-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x060814);
-scene.fog = new THREE.FogExp2(0x0a0f24, 0.022);
+scene.background = new THREE.Color(0x06070a);
+scene.fog = new THREE.FogExp2(0x090b10, 0.028);
 
 const camera = new THREE.PerspectiveCamera(
   60,
   window.innerWidth / window.innerHeight,
   0.1,
-  180
+  120
 );
 camera.position.set(0, 6, -8);
 
@@ -836,22 +930,22 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
 // =============================================================================
-// 5. ライティング
+// 5. ダンジョンライティング (アンビエント + メイン松明ライト)
 // =============================================================================
-const ambientLight = new THREE.AmbientLight(0x384c6c, 1.4);
+const ambientLight = new THREE.AmbientLight(0x1e293b, 1.2);
 scene.add(ambientLight);
 
-const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.9);
-hemiLight.position.set(0, 25, 0);
-scene.add(hemiLight);
+const moonLight = new THREE.DirectionalLight(0x60a5fa, 0.6);
+moonLight.position.set(10, 25, -15);
+scene.add(moonLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
-dirLight.position.set(12, 22, -10);
+const dirLight = new THREE.DirectionalLight(0xffedd5, 1.4);
+dirLight.position.set(-12, 18, 10);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.width = 1024;
 dirLight.shadow.mapSize.height = 1024;
 dirLight.shadow.camera.near = 0.5;
-dirLight.shadow.camera.far = 60;
+dirLight.shadow.camera.far = 50;
 const d = 18;
 dirLight.shadow.camera.left = -d;
 dirLight.shadow.camera.right = d;
@@ -861,218 +955,191 @@ dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
 // =============================================================================
-// 6. リッチな3Dステージ環境 (サイバーシティ摩天楼・浮遊クリスタル・ネオンダスト)
+// 6. 重厚な古代ダンジョン3D環境 (石畳床・かがり火・遺跡石柱・崩れた石壁・胞子)
 // =============================================================================
-const animatedEnvironmentObjects = {
-  crystals: [],
-  lightDustMesh: null,
-  dustPositions: null,
-  rings: [],
+const dungeonAnimatedObjects = {
+  torches: [],
+  sporeMesh: null,
+  sporePositions: null,
 };
 
-function createEnvironment() {
-  // 1. 地面プレーン (サイバーヘキサゴンネイビー)
-  const floorGeo = new THREE.PlaneGeometry(90, 90);
+function createDungeonEnvironment() {
+  const stoneFloorTex = TextureGenerator.createStoneFloorTexture();
+  const brickWallTex = TextureGenerator.createBrickWallTexture();
+
+  // 1. 古代石畳フロア
+  const floorGeo = new THREE.PlaneGeometry(80, 80);
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x0b1120,
-    roughness: 0.7,
-    metalness: 0.3,
+    map: stoneFloorTex,
+    roughness: 0.85,
+    metalness: 0.15,
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // 2. メインサイバーグリッド
-  const gridHelper = new THREE.GridHelper(90, 45, 0x0284c7, 0x1e293b);
-  gridHelper.position.y = 0.015;
-  scene.add(gridHelper);
+  // 2. 中央の古代召喚陣リング
+  const circleGeo = new THREE.RingGeometry(3.5, 3.7, 32);
+  const circleMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+  const circle = new THREE.Mesh(circleGeo, circleMat);
+  circle.rotation.x = -Math.PI / 2;
+  circle.position.y = 0.02;
+  scene.add(circle);
 
-  // 3. 中央のネオンリング & アリーナ境界リング
-  const arenaRingGeo = new THREE.RingGeometry(33.8, 34.2, 48);
-  const arenaRingMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide });
-  const arenaRing = new THREE.Mesh(arenaRingGeo, arenaRingMat);
-  arenaRing.rotation.x = -Math.PI / 2;
-  arenaRing.position.y = 0.02;
-  scene.add(arenaRing);
+  const arenaBorderGeo = new THREE.RingGeometry(34.0, 34.4, 48);
+  const arenaBorderMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+  const arenaBorder = new THREE.Mesh(arenaBorderGeo, arenaBorderMat);
+  arenaBorder.rotation.x = -Math.PI / 2;
+  arenaBorder.position.y = 0.02;
+  scene.add(arenaBorder);
 
-  const innerRingGeo = new THREE.RingGeometry(12.0, 12.3, 36);
-  const innerRingMat = new THREE.MeshBasicMaterial({ color: 0xf472b6, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
-  const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
-  innerRing.rotation.x = -Math.PI / 2;
-  innerRing.position.y = 0.02;
-  scene.add(innerRing);
-  animatedEnvironmentObjects.rings.push(innerRing);
-
-  // 4. 外周の浮遊エネルギークリスタルタワー (8箇所)
-  const crystalGeo = new THREE.OctahedronGeometry(1.4, 0);
-  const crystalMat = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
-    emissive: 0x0284c7,
-    emissiveIntensity: 0.9,
-    roughness: 0.1,
-    metalness: 0.9,
+  // 3. ダンジョン石柱 ＆ 燃え盛るかがり火台 (8基)
+  const pillarMat = new THREE.MeshStandardMaterial({
+    map: brickWallTex,
+    roughness: 0.9,
+    metalness: 0.1,
   });
-
-  const towerPillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
-  const towerGlowMat = new THREE.MeshBasicMaterial({ color: 0xf472b6 });
+  const ironMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5, metalness: 0.9 });
+  const fireMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
 
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
-    const radius = 35;
+    const radius = 33;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
 
-    const towerGroup = new THREE.Group();
-    towerGroup.position.set(x, 0, z);
+    const pillarGroup = new THREE.Group();
+    pillarGroup.position.set(x, 0, z);
 
     // 台座
-    const basePillar = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.3, 3.2, 8), towerPillarMat);
-    basePillar.position.y = 1.6;
-    basePillar.castShadow = true;
-    basePillar.receiveShadow = true;
-    towerGroup.add(basePillar);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 2.4), pillarMat);
+    base.position.y = 0.4;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    pillarGroup.add(base);
 
-    const baseRing = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.2, 8), towerGlowMat);
-    baseRing.position.y = 2.8;
-    towerGroup.add(baseRing);
+    // 主柱 (角柱)
+    const height = 6.0 + (i % 2 === 0 ? 1.5 : 0);
+    const col = new THREE.Mesh(new THREE.BoxGeometry(1.6, height, 1.6), pillarMat);
+    col.position.y = height / 2 + 0.8;
+    col.castShadow = true;
+    col.receiveShadow = true;
+    pillarGroup.add(col);
 
-    // 浮遊クリスタル
-    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
-    crystal.position.y = 4.6;
-    crystal.castShadow = true;
-    towerGroup.add(crystal);
+    // 柱頭 (キャピタル)
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 2.2), pillarMat);
+    cap.position.y = height + 1.1;
+    cap.castShadow = true;
+    pillarGroup.add(cap);
 
-    animatedEnvironmentObjects.crystals.push({
-      mesh: crystal,
-      baseY: 4.6,
-      rotSpeed: 0.8 + Math.random() * 0.5,
-      phase: i * 0.8,
+    // 鉄のかがり火台 (ブラジエ)
+    const brazier = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.4, 0.6, 8), ironMat);
+    brazier.position.set(0, 3.2, 0.9);
+    pillarGroup.add(brazier);
+
+    // 炎メッシュ
+    const fireMesh = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 6), fireMat);
+    fireMesh.position.set(0, 3.8, 0.9);
+    pillarGroup.add(fireMesh);
+
+    // 揺らめく松明ポイントライト
+    const torchLight = new THREE.PointLight(0xf97316, 1.8, 16);
+    torchLight.position.set(x, 3.8, z + 0.9);
+    torchLight.castShadow = (i % 2 === 0);
+    scene.add(torchLight);
+
+    dungeonAnimatedObjects.torches.push({
+      light: torchLight,
+      fireMesh: fireMesh,
+      baseIntensity: 1.8,
+      phase: i * 1.3,
     });
 
-    scene.add(towerGroup);
+    scene.add(pillarGroup);
   }
 
-  // 5. 遠景サイバーシティ摩天楼 (外周ビル群 45棟)
-  const buildingColors = [0x0f172a, 0x1e293b, 0x111827, 0x0c1222];
-  const windowGlowColors = [0x38bdf8, 0x818cf8, 0xf472b6, 0xfde047, 0x4ade80];
+  // 4. 外周の崩れた遺跡石壁 (16セクション)
+  for (let i = 0; i < 16; i++) {
+    const angle = (i / 16) * Math.PI * 2 + 0.15;
+    const radius = 37.5;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
 
-  for (let i = 0; i < 48; i++) {
-    const angle = (i / 48) * Math.PI * 2 + (Math.random() * 0.08);
-    const distance = 46 + Math.random() * 24;
-    const x = Math.cos(angle) * distance;
-    const z = Math.sin(angle) * distance;
+    const wallHeight = 4.5 + (Math.sin(i * 3) * 1.5);
+    const wallGeo = new THREE.BoxGeometry(8, wallHeight, 1.6);
+    const wall = new THREE.Mesh(wallGeo, pillarMat);
+    wall.position.set(x, wallHeight / 2, z);
+    wall.rotation.y = angle + Math.PI / 2;
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    scene.add(wall);
+  }
 
-    const bWidth = 4 + Math.random() * 5;
-    const bHeight = 16 + Math.random() * 32;
-    const bDepth = 4 + Math.random() * 5;
+  // 5. ダンジョン胞子・微細なチリ粒子 (Ambient Spores)
+  const sporeCount = 80;
+  const sporeGeo = new THREE.BufferGeometry();
+  const sporePositions = new Float32Array(sporeCount * 3);
+  const sporeColors = new Float32Array(sporeCount * 3);
 
-    const bMat = new THREE.MeshStandardMaterial({
-      color: buildingColors[Math.floor(Math.random() * buildingColors.length)],
-      roughness: 0.6,
-      metalness: 0.7,
-    });
+  for (let i = 0; i < sporeCount; i++) {
+    sporePositions[i * 3] = (Math.random() - 0.5) * 60;
+    sporePositions[i * 3 + 1] = Math.random() * 8 + 0.3;
+    sporePositions[i * 3 + 2] = (Math.random() - 0.5) * 60;
 
-    const building = new THREE.Mesh(new THREE.BoxGeometry(bWidth, bHeight, bDepth), bMat);
-    building.position.set(x, bHeight / 2, z);
-    scene.add(building);
-
-    // ビルの窓の光ストライプ
-    const winCount = 3 + Math.floor(Math.random() * 4);
-    for (let w = 0; w < winCount; w++) {
-      const winGeo = new THREE.BoxGeometry(bWidth * 0.85, 0.35, bDepth * 0.85);
-      const winMat = new THREE.MeshBasicMaterial({
-        color: windowGlowColors[Math.floor(Math.random() * windowGlowColors.length)],
-      });
-      const win = new THREE.Mesh(winGeo, winMat);
-      win.position.set(x, (bHeight * (w + 1)) / (winCount + 1.5), z);
-      scene.add(win);
-    }
-
-    // 屋上アンテナビーコン
+    // 琥珀色と薄緑のダンジョン胞子
     if (Math.random() > 0.4) {
-      const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.5, 4), towerPillarMat);
-      antenna.position.set(x, bHeight + 1.75, z);
-      scene.add(antenna);
-
-      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-      beacon.position.set(x, bHeight + 3.5, z);
-      scene.add(beacon);
+      sporeColors[i * 3] = 0.96; sporeColors[i * 3 + 1] = 0.65; sporeColors[i * 3 + 2] = 0.2; // 琥珀
+    } else {
+      sporeColors[i * 3] = 0.3; sporeColors[i * 3 + 1] = 0.8; sporeColors[i * 3 + 2] = 0.5; // 苔緑
     }
   }
 
-  // 6. 空間に舞う浮遊ネオンダスト (Ambient Cyber Motes)
-  const dustCount = 100;
-  const dustGeo = new THREE.BufferGeometry();
-  const dustPositions = new Float32Array(dustCount * 3);
-  const dustColors = new Float32Array(dustCount * 3);
+  sporeGeo.setAttribute('position', new THREE.BufferAttribute(sporePositions, 3));
+  sporeGeo.setAttribute('color', new THREE.BufferAttribute(sporeColors, 3));
 
-  const dustPalette = [
-    new THREE.Color(0x38bdf8), // シアン
-    new THREE.Color(0xf472b6), // ピンク
-    new THREE.Color(0xfde047), // ゴールド
-  ];
-
-  for (let i = 0; i < dustCount; i++) {
-    dustPositions[i * 3] = (Math.random() - 0.5) * 70;
-    dustPositions[i * 3 + 1] = Math.random() * 12 + 0.5;
-    dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 70;
-
-    const col = dustPalette[Math.floor(Math.random() * dustPalette.length)];
-    dustColors[i * 3] = col.r;
-    dustColors[i * 3 + 1] = col.g;
-    dustColors[i * 3 + 2] = col.b;
-  }
-
-  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
-  dustGeo.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
-
-  const dustMat = new THREE.PointsMaterial({
-    size: 0.35,
+  const sporeMat = new THREE.PointsMaterial({
+    size: 0.28,
     vertexColors: true,
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.75,
     blending: THREE.AdditiveBlending,
   });
 
-  const dustPoints = new THREE.Points(dustGeo, dustMat);
-  scene.add(dustPoints);
+  const sporePoints = new THREE.Points(sporeGeo, sporeMat);
+  scene.add(sporePoints);
 
-  animatedEnvironmentObjects.lightDustMesh = dustPoints;
-  animatedEnvironmentObjects.dustPositions = dustPositions;
+  dungeonAnimatedObjects.sporeMesh = sporePoints;
+  dungeonAnimatedObjects.sporePositions = sporePositions;
 }
 
-function updateEnvironment(delta) {
-  // クリスタルの浮遊回転
-  animatedEnvironmentObjects.crystals.forEach((c) => {
-    c.mesh.rotation.y += delta * c.rotSpeed;
-    c.mesh.rotation.x = Math.sin(Date.now() * 0.0015 + c.phase) * 0.2;
-    c.mesh.position.y = c.baseY + Math.sin(Date.now() * 0.002 + c.phase) * 0.35;
+function updateDungeonEnvironment(delta) {
+  // 松明の炎の揺らめき (Flicker)
+  dungeonAnimatedObjects.torches.forEach((t) => {
+    const flicker = Math.sin(Date.now() * 0.015 + t.phase) * 0.3 + (Math.random() - 0.5) * 0.2;
+    t.light.intensity = Math.max(t.baseIntensity + flicker, 0.8);
+    const fireScale = 1.0 + flicker * 0.35;
+    t.fireMesh.scale.set(fireScale, fireScale * 1.2, fireScale);
   });
 
-  // リング回転
-  animatedEnvironmentObjects.rings.forEach((r) => {
-    r.rotation.z += delta * 0.3;
-  });
-
-  // ネオンダストの上昇ゆらめき
-  if (animatedEnvironmentObjects.lightDustMesh && animatedEnvironmentObjects.dustPositions) {
-    const pos = animatedEnvironmentObjects.dustPositions;
+  // ダンジョン胞子の浮遊ゆらめき
+  if (dungeonAnimatedObjects.sporeMesh && dungeonAnimatedObjects.sporePositions) {
+    const pos = dungeonAnimatedObjects.sporePositions;
     for (let i = 0; i < pos.length / 3; i++) {
-      pos[i * 3 + 1] += delta * 0.6; // ゆっくり上昇
-      pos[i * 3] += Math.sin(Date.now() * 0.001 + i) * 0.02;
+      pos[i * 3 + 1] += delta * 0.35;
+      pos[i * 3] += Math.sin(Date.now() * 0.001 + i) * 0.015;
 
-      if (pos[i * 3 + 1] > 12.0) {
-        pos[i * 3 + 1] = 0.5;
-        pos[i * 3] = (Math.random() - 0.5) * 70;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * 70;
+      if (pos[i * 3 + 1] > 8.5) {
+        pos[i * 3 + 1] = 0.3;
+        pos[i * 3] = (Math.random() - 0.5) * 60;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 60;
       }
     }
-    animatedEnvironmentObjects.lightDustMesh.geometry.attributes.position.needsUpdate = true;
+    dungeonAnimatedObjects.sporeMesh.geometry.attributes.position.needsUpdate = true;
   }
 }
 
-createEnvironment();
+createDungeonEnvironment();
 
 // =============================================================================
 // 7. 刀の属性パーティクルシステム
@@ -1159,7 +1226,7 @@ class SwordParticleSystem {
 }
 
 // =============================================================================
-// 8. プレイヤーキャラクター生成
+// 8. ハイディテール・プレイヤーキャラクター生成 (甲冑・肩当て・ベルト・精巧な刀)
 // =============================================================================
 class Player {
   constructor() {
@@ -1179,7 +1246,9 @@ class Player {
     this.currentActionName = null;
 
     this.heroMat = null;
+    this.armorMat = null;
     this.darkMat = null;
+    this.goldTrimMat = null;
     this.visorMat = null;
     this.bladeMat = null;
     this.slashMat = null;
@@ -1215,41 +1284,94 @@ class Player {
   }
 
   buildDefaultMesh() {
-    this.heroMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.3 });
+    this.heroMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4, metalness: 0.4 });
+    this.armorMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.3, metalness: 0.7 });
     this.skinMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.6 });
-    this.darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+    this.darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6, metalness: 0.3 });
+    this.leatherMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+    this.goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
     this.visorMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
 
-    // 胴体
-    const bodyGeo = new THREE.BoxGeometry(0.7, 0.8, 0.45);
+    // 1. 胴体インナー
+    const bodyGeo = new THREE.BoxGeometry(0.68, 0.78, 0.42);
     this.body = new THREE.Mesh(bodyGeo, this.heroMat);
     this.body.position.y = 1.1;
     this.body.castShadow = true;
     this.defaultMeshGroup.add(this.body);
 
-    // 頭部
-    const headGeo = new THREE.BoxGeometry(0.45, 0.45, 0.45);
+    // 重厚なブレストプレート (胸甲)
+    const breastplateGeo = new THREE.BoxGeometry(0.72, 0.45, 0.16);
+    this.breastplate = new THREE.Mesh(breastplateGeo, this.armorMat);
+    this.breastplate.position.set(0, 0.12, 0.18);
+    this.breastplate.castShadow = true;
+    this.body.add(this.breastplate);
+
+    // 胸の黄金エンブレム
+    const emblemGeo = new THREE.OctahedronGeometry(0.12, 0);
+    const emblem = new THREE.Mesh(emblemGeo, this.goldTrimMat);
+    emblem.position.set(0, 0.12, 0.28);
+    this.body.add(emblem);
+
+    // 革ベルト ＆ バックル
+    const beltGeo = new THREE.BoxGeometry(0.72, 0.12, 0.46);
+    const belt = new THREE.Mesh(beltGeo, this.leatherMat);
+    belt.position.set(0, -0.22, 0);
+    this.body.add(belt);
+
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.06), this.goldTrimMat);
+    buckle.position.set(0, -0.22, 0.24);
+    this.body.add(buckle);
+
+    // 2. 頭部 & ヘルメット
+    const headGeo = new THREE.BoxGeometry(0.42, 0.42, 0.42);
     this.head = new THREE.Mesh(headGeo, this.skinMat);
-    this.head.position.set(0, 0.65, 0);
+    this.head.position.set(0, 0.62, 0);
     this.head.castShadow = true;
     this.body.add(this.head);
 
-    // バイザー
-    const visorGeo = new THREE.BoxGeometry(0.38, 0.12, 0.1);
+    // 額当て / ヘルメットガード
+    const browGeo = new THREE.BoxGeometry(0.46, 0.14, 0.12);
+    this.browMesh = new THREE.Mesh(browGeo, this.armorMat);
+    this.browMesh.position.set(0, 0.15, 0.18);
+    this.head.add(this.browMesh);
+
+    // 光るサイバー/ナイトバイザー
+    const visorGeo = new THREE.BoxGeometry(0.36, 0.08, 0.06);
     this.visorMesh = new THREE.Mesh(visorGeo, this.visorMat);
-    this.visorMesh.position.set(0, 0.05, 0.22);
+    this.visorMesh.position.set(0, 0.04, 0.23);
     this.head.add(this.visorMesh);
+
+    // 揺れる髪束 / ポニーテール
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+    const hairGeo = new THREE.BoxGeometry(0.14, 0.38, 0.14);
+    this.hair = new THREE.Mesh(hairGeo, hairMat);
+    this.hair.position.set(0, 0.05, -0.25);
+    this.hair.rotation.x = -0.3;
+    this.head.add(this.hair);
 
     this.headGearGroup = new THREE.Group();
     this.head.add(this.headGearGroup);
 
-    // 腕
-    const armGeo = new THREE.BoxGeometry(0.2, 0.65, 0.2);
+    // 3. 腕・立体肩当て (ポールドロン) ＆ 籠手 (ガントレット)
+    const armGeo = new THREE.BoxGeometry(0.18, 0.65, 0.18);
+    const pauldronGeo = new THREE.BoxGeometry(0.32, 0.24, 0.32);
+    const gauntletGeo = new THREE.BoxGeometry(0.22, 0.28, 0.22);
+
+    // 左腕
     this.leftArm = new THREE.Mesh(armGeo, this.heroMat);
     this.leftArm.position.set(-0.48, 0.15, 0);
     this.leftArm.castShadow = true;
     this.body.add(this.leftArm);
 
+    this.leftPauldron = new THREE.Mesh(pauldronGeo, this.armorMat);
+    this.leftPauldron.position.set(0, 0.24, 0);
+    this.leftArm.add(this.leftPauldron);
+
+    const leftGauntlet = new THREE.Mesh(gauntletGeo, this.armorMat);
+    leftGauntlet.position.set(0, -0.18, 0);
+    this.leftArm.add(leftGauntlet);
+
+    // 右腕 (武器持ち手)
     this.rightArmPivot = new THREE.Group();
     this.rightArmPivot.position.set(0.48, 0.3, 0);
     this.body.add(this.rightArmPivot);
@@ -1259,59 +1381,99 @@ class Player {
     this.rightArm.castShadow = true;
     this.rightArmPivot.add(this.rightArm);
 
+    this.rightPauldron = new THREE.Mesh(pauldronGeo, this.armorMat);
+    this.rightPauldron.position.set(0, 0.24, 0);
+    this.rightArm.add(this.rightPauldron);
+
+    const rightGauntlet = new THREE.Mesh(gauntletGeo, this.armorMat);
+    rightGauntlet.position.set(0, -0.18, 0);
+    this.rightArm.add(rightGauntlet);
+
     this.createSword();
 
-    // 脚
-    const legGeo = new THREE.BoxGeometry(0.25, 0.7, 0.25);
-    
+    // 4. 脚・立体膝当て (ニーガード) ＆ グリーブ (すね当て)
+    const legGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
+    const kneeGeo = new THREE.BoxGeometry(0.28, 0.16, 0.12);
+    const bootGeo = new THREE.BoxGeometry(0.26, 0.18, 0.32);
+
+    // 左脚
     this.leftLegPivot = new THREE.Group();
     this.leftLegPivot.position.set(-0.2, 0.7, 0);
     this.defaultMeshGroup.add(this.leftLegPivot);
+
     this.leftLeg = new THREE.Mesh(legGeo, this.darkMat);
     this.leftLeg.position.set(0, -0.35, 0);
     this.leftLeg.castShadow = true;
     this.leftLegPivot.add(this.leftLeg);
 
+    const leftKnee = new THREE.Mesh(kneeGeo, this.armorMat);
+    leftKnee.position.set(0, 0.05, 0.12);
+    this.leftLeg.add(leftKnee);
+
+    const leftBoot = new THREE.Mesh(bootGeo, this.armorMat);
+    leftBoot.position.set(0, -0.28, 0.04);
+    this.leftLeg.add(leftBoot);
+
+    // 右脚
     this.rightLegPivot = new THREE.Group();
     this.rightLegPivot.position.set(0.2, 0.7, 0);
     this.defaultMeshGroup.add(this.rightLegPivot);
+
     this.rightLeg = new THREE.Mesh(legGeo, this.darkMat);
     this.rightLeg.position.set(0, -0.35, 0);
     this.rightLeg.castShadow = true;
     this.rightLegPivot.add(this.rightLeg);
+
+    const rightKnee = new THREE.Mesh(kneeGeo, this.armorMat);
+    rightKnee.position.set(0, 0.05, 0.12);
+    this.rightLeg.add(rightKnee);
+
+    const rightBoot = new THREE.Mesh(bootGeo, this.armorMat);
+    rightBoot.position.set(0, -0.28, 0.04);
+    this.rightLeg.add(rightBoot);
   }
 
   createSword() {
     this.swordGroup = new THREE.Group();
     this.swordGroup.position.set(0, -0.5, 0.15);
 
-    const hiltGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.35, 8);
-    const hiltMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+    // 柄 (つか) & 柄巻きディテール
+    const hiltGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.38, 8);
+    const hiltMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
     const hilt = new THREE.Mesh(hiltGeo, hiltMat);
     hilt.rotation.x = Math.PI / 2;
     this.swordGroup.add(hilt);
 
-    const guardGeo = new THREE.BoxGeometry(0.16, 0.04, 0.12);
-    const guardMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8 });
+    // 鍔 (ツバ)
+    const guardGeo = new THREE.BoxGeometry(0.22, 0.04, 0.16);
+    const guardMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.2 });
     this.guardMesh = new THREE.Mesh(guardGeo, guardMat);
-    this.guardMesh.position.z = 0.18;
+    this.guardMesh.position.z = 0.2;
     this.swordGroup.add(this.guardMesh);
 
-    const bladeGeo = new THREE.BoxGeometry(0.06, 0.02, 1.25);
+    // 刀身 (シャープな両刃/片刃ブレード)
+    const bladeGeo = new THREE.BoxGeometry(0.08, 0.02, 1.35);
     this.bladeMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
       emissive: 0x0284c7,
       emissiveIntensity: 0.85,
-      roughness: 0.2,
-      metalness: 0.9,
+      roughness: 0.15,
+      metalness: 0.95,
     });
     this.bladeMesh = new THREE.Mesh(bladeGeo, this.bladeMat);
-    this.bladeMesh.position.z = 0.8;
+    this.bladeMesh.position.z = 0.88;
     this.bladeMesh.castShadow = true;
     this.swordGroup.add(this.bladeMesh);
 
+    // 刃紋 / 光るエッジライン
+    const edgeGeo = new THREE.BoxGeometry(0.09, 0.025, 1.35);
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
+    const edge = new THREE.Mesh(edgeGeo, edgeMat);
+    edge.position.z = 0.88;
+    this.swordGroup.add(edge);
+
     this.swordTip = new THREE.Object3D();
-    this.swordTip.position.set(0, 0, 1.35);
+    this.swordTip.position.set(0, 0, 1.55);
     this.swordGroup.add(this.swordTip);
 
     this.rightArmPivot.add(this.swordGroup);
@@ -1418,8 +1580,9 @@ class Player {
     const item = ITEMS_DATA.outfits[outfitId] || ITEMS_DATA.outfits.default;
     this.currentOutfit = item.id;
     if (this.heroMat) this.heroMat.color.setHex(item.heroColor);
+    if (this.armorMat) this.armorMat.color.setHex(item.armorColor || 0x64748b);
     if (this.darkMat) this.darkMat.color.setHex(item.darkColor);
-    if (this.visorMat) this.visorMat.color.setHex(item.visorColor);
+    if (this.goldTrimMat) this.goldTrimMat.color.setHex(item.trimColor || 0xf59e0b);
   }
 
   applyHeadGear(headId) {
@@ -1443,62 +1606,52 @@ class Player {
       const glassMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.1, metalness: 0.9 });
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8 });
 
-      const frameGeo = new THREE.BoxGeometry(0.42, 0.12, 0.08);
+      const frameGeo = new THREE.BoxGeometry(0.44, 0.12, 0.08);
       const frame = new THREE.Mesh(frameGeo, frameMat);
       frame.position.set(0, 0.06, 0.23);
       this.headGearGroup.add(frame);
 
       const lensGeo = new THREE.BoxGeometry(0.16, 0.08, 0.02);
       const leftLens = new THREE.Mesh(lensGeo, glassMat);
-      leftLens.position.set(-0.1, 0.06, 0.28);
+      leftLens.position.set(-0.11, 0.06, 0.28);
       this.headGearGroup.add(leftLens);
 
       const rightLens = new THREE.Mesh(lensGeo, glassMat);
-      rightLens.position.set(0.1, 0.06, 0.28);
+      rightLens.position.set(0.11, 0.06, 0.28);
       this.headGearGroup.add(rightLens);
     } else if (headId === 'ninja_band') {
       if (this.visorMesh) this.visorMesh.visible = true;
-      const bandMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 });
+      const bandMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 });
       const bandGeo = new THREE.BoxGeometry(0.48, 0.08, 0.48);
       const band = new THREE.Mesh(bandGeo, bandMat);
-      band.position.set(0, 0.12, 0);
+      band.position.set(0, 0.15, 0);
       this.headGearGroup.add(band);
 
-      const knotGeo = new THREE.BoxGeometry(0.08, 0.1, 0.08);
-      const knot = new THREE.Mesh(knotGeo, bandMat);
-      knot.position.set(0, 0.12, -0.26);
-      this.headGearGroup.add(knot);
-
-      const tailGeo = new THREE.BoxGeometry(0.06, 0.35, 0.02);
+      const tailGeo = new THREE.BoxGeometry(0.06, 0.45, 0.02);
       const tail1 = new THREE.Mesh(tailGeo, bandMat);
       tail1.position.set(-0.06, -0.05, -0.28);
       tail1.rotation.z = -0.25;
-      tail1.rotation.x = -0.2;
+      tail1.rotation.x = -0.3;
       this.headGearGroup.add(tail1);
 
       const tail2 = new THREE.Mesh(tailGeo, bandMat);
-      tail2.position.set(0.06, -0.07, -0.28);
+      tail2.position.set(0.06, -0.08, -0.28);
       tail2.rotation.z = 0.2;
-      tail2.rotation.x = -0.3;
+      tail2.rotation.x = -0.4;
       this.headGearGroup.add(tail2);
     } else if (headId === 'samurai_helm') {
       if (this.visorMesh) this.visorMesh.visible = true;
-      const helmMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.8 });
-      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.2 });
+      const helmMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.3, metalness: 0.85 });
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.95, roughness: 0.2 });
 
-      const domeGeo = new THREE.BoxGeometry(0.5, 0.16, 0.5);
+      const domeGeo = new THREE.BoxGeometry(0.5, 0.18, 0.5);
       const dome = new THREE.Mesh(domeGeo, helmMat);
       dome.position.set(0, 0.28, 0);
       this.headGearGroup.add(dome);
 
-      const neckGeo = new THREE.BoxGeometry(0.52, 0.22, 0.12);
-      const neck = new THREE.Mesh(neckGeo, helmMat);
-      neck.position.set(0, 0.05, -0.22);
-      this.headGearGroup.add(neck);
-
-      const crestGeo = new THREE.TorusGeometry(0.2, 0.025, 8, 16, Math.PI * 0.8);
+      const crestGeo = new THREE.TorusGeometry(0.22, 0.03, 8, 16, Math.PI * 0.8);
       const crest = new THREE.Mesh(crestGeo, goldMat);
-      crest.position.set(0, 0.32, 0.24);
+      crest.position.set(0, 0.34, 0.24);
       crest.rotation.x = Math.PI;
       crest.rotation.z = Math.PI * 0.6;
       this.headGearGroup.add(crest);
@@ -1507,20 +1660,19 @@ class Player {
       const hornMat = new THREE.MeshStandardMaterial({
         color: 0xf43f5e,
         emissive: 0xe11d48,
-        emissiveIntensity: 0.8,
+        emissiveIntensity: 0.9,
         roughness: 0.2,
       });
 
-      const hornGeo = new THREE.ConeGeometry(0.08, 0.32, 6);
-
+      const hornGeo = new THREE.ConeGeometry(0.08, 0.38, 6);
       const leftHorn = new THREE.Mesh(hornGeo, hornMat);
-      leftHorn.position.set(-0.16, 0.35, 0.08);
+      leftHorn.position.set(-0.16, 0.38, 0.08);
       leftHorn.rotation.z = -0.4;
       leftHorn.rotation.x = 0.2;
       this.headGearGroup.add(leftHorn);
 
       const rightHorn = new THREE.Mesh(hornGeo, hornMat);
-      rightHorn.position.set(0.16, 0.35, 0.08);
+      rightHorn.position.set(0.16, 0.38, 0.08);
       rightHorn.rotation.z = 0.4;
       rightHorn.rotation.x = 0.2;
       this.headGearGroup.add(rightHorn);
@@ -1560,7 +1712,6 @@ class Player {
       const normScreenX = screenX / (inputLen > 1 ? inputLen : 1);
       const normScreenZ = screenZ / (inputLen > 1 ? inputLen : 1);
 
-      // カメラ視点に合わせた方向変換 (画面右は-X)
       const worldX = -normScreenX;
       const worldZ = normScreenZ;
 
@@ -1577,15 +1728,19 @@ class Player {
       this.group.position.z += this.velocity.z * delta;
 
       const distFromCenter = Math.sqrt(this.group.position.x ** 2 + this.group.position.z ** 2);
-      if (distFromCenter > 34) {
-        this.group.position.x = (this.group.position.x / distFromCenter) * 34;
-        this.group.position.z = (this.group.position.z / distFromCenter) * 34;
+      if (distFromCenter > 33.5) {
+        this.group.position.x = (this.group.position.x / distFromCenter) * 33.5;
+        this.group.position.z = (this.group.position.z / distFromCenter) * 33.5;
       }
 
       this.walkCycle += delta * 12 * Math.min(inputLen, 1.2);
     } else {
       this.velocity.set(0, 0, 0);
       this.walkCycle += delta * 2;
+    }
+
+    if (this.hair) {
+      this.hair.rotation.x = -0.3 + (this.isMoving ? Math.sin(this.walkCycle * 2) * 0.25 : Math.sin(this.walkCycle) * 0.05);
     }
 
     if (this.mixer) {
@@ -1701,7 +1856,7 @@ class Player {
 }
 
 // =============================================================================
-// 9. ゾンビ（敵）システム
+// 9. ハイディテール・ゾンビ（アンデッド）システム (牙・窪んだ眼・ボロ布・鉤爪)
 // =============================================================================
 class Zombie {
   constructor() {
@@ -1725,47 +1880,105 @@ class Zombie {
   }
 
   buildDefaultMesh() {
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.6 });
-    const clothesMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 }); // 腐敗グリーン
+    const darkSkinMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9 });
+    const ragMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 }); // 破れたボロ布
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 }); // 露出した骨/牙
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 }); // 邪悪な赤眼
+    const clawMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3, metalness: 0.8 });
 
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.4), clothesMat);
+    // 1. 胴体 (ボロ布ベスト ＆ 露出した肋骨)
+    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.78, 0.42), skinMat);
     this.body.position.y = 1.05;
     this.body.castShadow = true;
     this.defaultMeshGroup.add(this.body);
 
-    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), skinMat);
-    this.head.position.set(0, 0.6, 0);
+    // 破けたボロ布ベスト
+    const ragVest = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.46), ragMat);
+    ragVest.position.set(0, 0.1, 0);
+    this.body.add(ragVest);
+
+    // 露出した肋骨 (骨パーツ)
+    for (let r = 0; r < 3; r++) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.12), boneMat);
+      rib.position.set(0, -0.05 - r * 0.1, 0.2);
+      this.body.add(rib);
+    }
+
+    // 2. 頭部 (窪んだ眼窩・鋭い牙・傷跡)
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
+    this.head.position.set(0, 0.62, 0);
     this.head.castShadow = true;
     this.body.add(this.head);
 
-    const eyeGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+    // 窪んだ眼窩 (黒いアイソケット)
+    const socketGeo = new THREE.BoxGeometry(0.12, 0.12, 0.04);
+    const socketMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+    const lSocket = new THREE.Mesh(socketGeo, socketMat);
+    lSocket.position.set(-0.12, 0.06, 0.22);
+    this.head.add(lSocket);
+    const rSocket = new THREE.Mesh(socketGeo, socketMat);
+    rSocket.position.set(0.12, 0.06, 0.22);
+    this.head.add(rSocket);
+
+    // 光る赤眼
+    const eyeGeo = new THREE.SphereGeometry(0.045, 6, 6);
     const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.12, 0.05, 0.22);
+    leftEye.position.set(-0.12, 0.06, 0.23);
     this.head.add(leftEye);
 
     const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.12, 0.05, 0.22);
+    rightEye.position.set(0.12, 0.06, 0.23);
     this.head.add(rightEye);
 
-    const armGeo = new THREE.BoxGeometry(0.18, 0.18, 0.6);
+    // むき出しの牙/鋭い歯 (上あご・下あご)
+    for (let t = 0; t < 4; t++) {
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 4), boneMat);
+      tooth.position.set(-0.12 + t * 0.08, -0.14, 0.22);
+      tooth.rotation.x = Math.PI;
+      this.head.add(tooth);
+    }
+
+    // 3. 腕 (不気味に前方に伸びた腕 ＆ 鋭い黒い鉤爪)
+    const armGeo = new THREE.BoxGeometry(0.18, 0.18, 0.65);
+
     this.leftArm = new THREE.Mesh(armGeo, skinMat);
-    this.leftArm.position.set(-0.42, 0.2, 0.25);
+    this.leftArm.position.set(-0.44, 0.2, 0.28);
+    this.leftArm.rotation.x = 0.15;
     this.leftArm.castShadow = true;
     this.body.add(this.leftArm);
 
-    this.rightArm = new THREE.Mesh(armGeo, skinMat);
-    this.rightArm.position.set(0.42, 0.2, 0.25);
+    // 左鉤爪
+    for (let c = 0; c < 3; c++) {
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), clawMat);
+      claw.position.set(-0.06 + c * 0.06, 0, 0.38);
+      claw.rotation.x = Math.PI / 2;
+      this.leftArm.add(claw);
+    }
+
+    this.rightArm = new THREE.Mesh(armGeo, darkSkinMat);
+    this.rightArm.position.set(0.44, 0.15, 0.32);
+    this.rightArm.rotation.x = 0.3;
     this.rightArm.castShadow = true;
     this.body.add(this.rightArm);
 
-    const legGeo = new THREE.BoxGeometry(0.22, 0.65, 0.22);
-    this.leftLeg = new THREE.Mesh(legGeo, clothesMat);
+    // 右鉤爪
+    for (let c = 0; c < 3; c++) {
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), clawMat);
+      claw.position.set(-0.06 + c * 0.06, 0, 0.38);
+      claw.rotation.x = Math.PI / 2;
+      this.rightArm.add(claw);
+    }
+
+    // 4. 脚 (破れたズボン ＆ 腐敗した足)
+    const legGeo = new THREE.BoxGeometry(0.24, 0.68, 0.24);
+
+    this.leftLeg = new THREE.Mesh(legGeo, ragMat);
     this.leftLeg.position.set(-0.18, 0.35, 0);
     this.leftLeg.castShadow = true;
     this.defaultMeshGroup.add(this.leftLeg);
 
-    this.rightLeg = new THREE.Mesh(legGeo, clothesMat);
+    this.rightLeg = new THREE.Mesh(legGeo, skinMat);
     this.rightLeg.position.set(0.18, 0.35, 0);
     this.rightLeg.castShadow = true;
     this.defaultMeshGroup.add(this.rightLeg);
@@ -1820,10 +2033,10 @@ class Zombie {
         this.walkCycle += delta * 5;
         this.leftLeg.rotation.x = Math.sin(this.walkCycle) * 0.45;
         this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * 0.45;
-        this.body.rotation.z = Math.sin(this.walkCycle * 0.5) * 0.12;
+        this.body.rotation.z = Math.sin(this.walkCycle * 0.5) * 0.14;
         this.head.rotation.y = Math.sin(this.walkCycle * 0.7) * 0.18;
-        this.leftArm.rotation.x = Math.sin(this.walkCycle) * 0.15;
-        this.rightArm.rotation.x = -Math.sin(this.walkCycle) * 0.15;
+        this.leftArm.rotation.x = 0.15 + Math.sin(this.walkCycle) * 0.2;
+        this.rightArm.rotation.x = 0.3 - Math.sin(this.walkCycle) * 0.2;
       }
     }
   }
@@ -1885,17 +2098,17 @@ class ZombieManager {
 }
 
 // =============================================================================
-// 10. パーティクルシステム (ゾンビ破片 & スパーク)
+// 10. パーティクルシステム (アンデッド破片 & スパーク)
 // =============================================================================
 class ParticleSystem {
   constructor() {
     this.particles = [];
     this.particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
     this.materials = [
-      new THREE.MeshStandardMaterial({ color: 0x22c55e }),
-      new THREE.MeshStandardMaterial({ color: 0x15803d }),
-      new THREE.MeshStandardMaterial({ color: 0xfacc15 }),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8 }),
+      new THREE.MeshStandardMaterial({ color: 0x166534 }),
+      new THREE.MeshStandardMaterial({ color: 0x334155 }),
+      new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }),
+      new THREE.MeshBasicMaterial({ color: 0xef4444 }),
     ];
   }
 
@@ -2640,7 +2853,6 @@ function setupControls(player) {
     });
   }
 
-  // 画面の初回タップ/クリックでWeb Audioアンロック
   window.addEventListener('pointerdown', () => soundManager.unlock(), { once: true });
   window.addEventListener('keydown', () => soundManager.unlock(), { once: true });
 
@@ -3211,8 +3423,8 @@ function animate() {
 
   const delta = Math.min(clock.getDelta(), 0.1);
 
-  // 3D背景の環境アニメーション (クリスタル・リング・浮遊ダスト)
-  updateEnvironment(delta);
+  // ダンジョン背景アニメーション (松明の炎の揺らめき、胞子の浮遊)
+  updateDungeonEnvironment(delta);
 
   if (!state.isPaused) {
     player.update(delta);
