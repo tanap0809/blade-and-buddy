@@ -1,6 +1,6 @@
 /**
  * Blade & Buddy - 3D Dungeon Action Game
- * Detailed Dungeon Environment + High-Detail Hero & Undead Skins + Dynamic Web Audio + Multi-Pet System
+ * Detailed Dungeon Environment + High-Detail Hero & Undead Skins + Zubatto Slash Sound & Zombie Death Scream Action
  */
 
 // =============================================================================
@@ -64,12 +64,13 @@ const state = {
   isAttacking: false,
   attackTimer: 0,
   canAttack: true,
+  hitStopTimer: 0, // ヒットストップ
   moveVector: new THREE.Vector2(0, 0),
   keys: { forward: false, backward: false, left: false, right: false },
 };
 
 // =============================================================================
-// 1.2 プロシージャルテクスチャ生成器 (リアルな石畳・石レンガ・木目)
+// 1.2 プロシージャルテクスチャ生成器 (リアルな石畳・石レンガ)
 // =============================================================================
 class TextureGenerator {
   static createStoneFloorTexture() {
@@ -78,11 +79,9 @@ class TextureGenerator {
     canvas.height = 512;
     const ctx = canvas.getContext('2d');
 
-    // 下地（深い石のダークグレー）
     ctx.fillStyle = '#1c1f26';
     ctx.fillRect(0, 0, 512, 512);
 
-    // 石畳タイルの描画
     const tileSize = 64;
     const cols = 512 / tileSize;
     const rows = 512 / tileSize;
@@ -92,12 +91,10 @@ class TextureGenerator {
         const x = c * tileSize + (r % 2 === 1 ? tileSize / 2 : 0);
         const y = r * tileSize;
 
-        // 石ごとの微小な色むら
         const lum = Math.floor(25 + Math.random() * 20);
         ctx.fillStyle = `rgb(${lum + 5}, ${lum + 8}, ${lum + 12})`;
         ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
 
-        // タイル内のノイズとひび割れ
         for (let n = 0; n < 30; n++) {
           const nx = x + 4 + Math.random() * (tileSize - 8);
           const ny = y + 4 + Math.random() * (tileSize - 8);
@@ -106,7 +103,6 @@ class TextureGenerator {
           ctx.fillRect(nx, ny, nSize, nSize);
         }
 
-        // ひび割れライン
         if (Math.random() > 0.6) {
           ctx.strokeStyle = 'rgba(10, 12, 16, 0.6)';
           ctx.lineWidth = 1.2;
@@ -119,7 +115,6 @@ class TextureGenerator {
       }
     }
 
-    // 目地（黒ずみ）
     ctx.strokeStyle = '#0d0f14';
     ctx.lineWidth = 3;
     for (let r = 0; r <= rows; r++) {
@@ -161,7 +156,6 @@ class TextureGenerator {
         ctx.fillStyle = `rgb(${lum}, ${lum + 4}, ${lum + 8})`;
         ctx.fillRect(x + offset + 2, y + 2, bWidth - 4, bHeight - 4);
 
-        // 苔/古びた汚れ
         if (Math.random() > 0.4) {
           ctx.fillStyle = 'rgba(15, 30, 20, 0.4)';
           ctx.fillRect(x + offset + 4, y + bHeight - 8, bWidth - 8, 4);
@@ -178,7 +172,7 @@ class TextureGenerator {
 }
 
 // =============================================================================
-// 1.8 Web Audio API ダンジョンBGM & SEエンジン
+// 1.8 Web Audio API ダンジョンBGM & 迫力の「ズバッ！」SE & ゾンビ断末魔
 // =============================================================================
 class SoundManager {
   constructor() {
@@ -205,11 +199,11 @@ class SoundManager {
     this.masterGain.connect(this.ctx.destination);
 
     this.bgmGain = this.ctx.createGain();
-    this.bgmGain.gain.setValueAtTime(0.38, this.ctx.currentTime);
+    this.bgmGain.gain.setValueAtTime(0.35, this.ctx.currentTime);
     this.bgmGain.connect(this.masterGain);
 
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
+    this.sfxGain.gain.setValueAtTime(0.75, this.ctx.currentTime);
     this.sfxGain.connect(this.masterGain);
   }
 
@@ -264,7 +258,6 @@ class SoundManager {
     const beatInBar = step % 16;
     const bar = Math.floor(step / 16);
 
-    // 1. ダンジョン太鼓/パーカッション
     if (beatInBar === 0 || beatInBar === 8 || (bar % 2 === 1 && beatInBar === 10)) {
       this.synthDungeonDrum(time, beatInBar === 0 ? 90 : 70);
     }
@@ -275,7 +268,6 @@ class SoundManager {
       this.synthHihat(time, beatInBar % 4 === 2 ? 0.28 : 0.15);
     }
 
-    // 2. 重厚なダンジョンベースライン (Dマイナー / Aマイナー)
     const baseNotes = [
       73.42, 73.42, 110.0, 73.42, 73.42, 73.42, 87.31, 73.42,
       73.42, 73.42, 110.0, 73.42, 65.41, 73.42, 87.31, 98.0,
@@ -287,7 +279,6 @@ class SoundManager {
       this.synthBass(bassFreq, time, 0.14);
     }
 
-    // 3. ミステリアスなダンジョンメロディ (ハープ/シンセベル風)
     const melodyScale = [293.66, 329.63, 349.23, 440.0, 493.88, 523.25, 587.33, 698.46];
     const arpeggio = [0, 2, 3, 5, 4, 3, 2, 3, 0, 3, 5, 7, 6, 5, 3, 2];
     const noteIdx = arpeggio[beatInBar];
@@ -395,6 +386,7 @@ class SoundManager {
     osc.stop(time + dur);
   }
 
+  // --- 空振りスイング音 ---
   playAttackSlash() {
     if (!this.ctx || this.isMuted) return;
     const osc = this.ctx.createOscillator();
@@ -402,37 +394,123 @@ class SoundManager {
     const filter = this.ctx.createBiquadFilter();
 
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(750, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(90, this.ctx.currentTime + 0.15);
+    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.12);
 
     filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(1400, this.ctx.currentTime);
+    filter.frequency.setValueAtTime(1600, this.ctx.currentTime);
 
-    gain.gain.setValueAtTime(0.45, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
 
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.sfxGain);
     osc.start();
-    osc.stop(this.ctx.currentTime + 0.16);
+    osc.stop(this.ctx.currentTime + 0.13);
   }
 
-  playHit() {
+  // --- 迫力の「ズバッッ！」斬撃インパクト音 ---
+  playZubattoSlash() {
     if (!this.ctx || this.isMuted) return;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(190, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(25, this.ctx.currentTime + 0.2);
+    const now = this.ctx.currentTime;
 
-    gain.gain.setValueAtTime(0.7, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+    // 1. 鋭い高速切り裂きノイズ (Slash Sweep)
+    const bufferSize = this.ctx.sampleRate * 0.18;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
 
-    osc.connect(gain);
-    gain.connect(this.sfxGain);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.21);
+    const noiseFilter = this.ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(3200, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(400, now + 0.16);
+    noiseFilter.Q.setValueAtTime(3.5, now);
+
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.9, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this.sfxGain);
+    noise.start(now);
+    noise.stop(now + 0.17);
+
+    // 2. 重厚な肉体断裂インパクト (Heavy Body Hit / Sub Impact)
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(180, now);
+    subOsc.frequency.exponentialRampToValueAtTime(30, now + 0.22);
+
+    subGain.gain.setValueAtTime(1.0, now);
+    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+
+    subOsc.connect(subGain);
+    subGain.connect(this.sfxGain);
+    subOsc.start(now);
+    subOsc.stop(now + 0.23);
+
+    // 3. 刃の金属スパーク音 (Blade Clang Spark)
+    const bladeOsc = this.ctx.createOscillator();
+    const bladeGain = this.ctx.createGain();
+    bladeOsc.type = 'sawtooth';
+    bladeOsc.frequency.setValueAtTime(1200, now);
+    bladeOsc.frequency.exponentialRampToValueAtTime(180, now + 0.1);
+
+    bladeGain.gain.setValueAtTime(0.5, now);
+    bladeGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+    bladeOsc.connect(bladeGain);
+    bladeGain.connect(this.sfxGain);
+    bladeOsc.start(now);
+    bladeOsc.stop(now + 0.11);
+  }
+
+  // --- ゾンビの断末魔・悲鳴サウンド ---
+  playZombieDeathScream() {
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+
+    // 不気味なアンデッドのグロウル・断末魔の叫び (FM Synthesis)
+    const carrier = this.ctx.createOscillator();
+    const modulator = this.ctx.createOscillator();
+    const modGain = this.ctx.createGain();
+    const mainGain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    carrier.type = 'sawtooth';
+    // 高い叫びから苦悶のうめき声へと下降
+    carrier.frequency.setValueAtTime(340 + Math.random() * 80, now);
+    carrier.frequency.exponentialRampToValueAtTime(65, now + 0.45);
+
+    modulator.type = 'sine';
+    modulator.frequency.setValueAtTime(45, now); // ゾンビの喉の震え
+    modulator.frequency.linearRampToValueAtTime(18, now + 0.45);
+
+    modGain.gain.setValueAtTime(120, now);
+    modGain.gain.linearRampToValueAtTime(20, now + 0.45);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1600, now);
+    filter.frequency.exponentialRampToValueAtTime(300, now + 0.45);
+
+    mainGain.gain.setValueAtTime(0.7, now);
+    mainGain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
+    carrier.connect(filter);
+    filter.connect(mainGain);
+    mainGain.connect(this.sfxGain);
+
+    modulator.start(now);
+    carrier.start(now);
+    modulator.stop(now + 0.46);
+    carrier.stop(now + 0.46);
   }
 
   playCoin() {
@@ -527,7 +605,7 @@ class SoundManager {
 const soundManager = new SoundManager();
 
 // =============================================================================
-// 2. ショップアイテム定義 (ハイディテール衣装・兜・刀・ペット)
+// 2. ショップアイテム定義
 // =============================================================================
 const ITEMS_DATA = {
   outfits: {
@@ -768,7 +846,7 @@ const ITEMS_DATA = {
 };
 
 // =============================================================================
-// 3. セーブデータ管理 (localStorage)
+// 3. セーブデータ管理
 // =============================================================================
 class SaveManager {
   static STORAGE_KEY = 'blade_and_buddy_save_v1';
@@ -845,7 +923,7 @@ const saveData = SaveManager.load();
 state.coins = saveData.coins;
 
 // =============================================================================
-// 3.5 モデルローダー (GLTFLoader)
+// 3.5 モデルローダー
 // =============================================================================
 class ModelLoader {
   constructor() {
@@ -930,7 +1008,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
 // =============================================================================
-// 5. ダンジョンライティング (アンビエント + メイン松明ライト)
+// 5. ダンジョンライティング
 // =============================================================================
 const ambientLight = new THREE.AmbientLight(0x1e293b, 1.2);
 scene.add(ambientLight);
@@ -955,7 +1033,7 @@ dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
 // =============================================================================
-// 6. 重厚な古代ダンジョン3D環境 (石畳床・かがり火・遺跡石柱・崩れた石壁・胞子)
+// 6. 重厚な古代ダンジョン3D環境
 // =============================================================================
 const dungeonAnimatedObjects = {
   torches: [],
@@ -967,7 +1045,6 @@ function createDungeonEnvironment() {
   const stoneFloorTex = TextureGenerator.createStoneFloorTexture();
   const brickWallTex = TextureGenerator.createBrickWallTexture();
 
-  // 1. 古代石畳フロア
   const floorGeo = new THREE.PlaneGeometry(80, 80);
   const floorMat = new THREE.MeshStandardMaterial({
     map: stoneFloorTex,
@@ -979,7 +1056,6 @@ function createDungeonEnvironment() {
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // 2. 中央の古代召喚陣リング
   const circleGeo = new THREE.RingGeometry(3.5, 3.7, 32);
   const circleMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
   const circle = new THREE.Mesh(circleGeo, circleMat);
@@ -994,7 +1070,6 @@ function createDungeonEnvironment() {
   arenaBorder.position.y = 0.02;
   scene.add(arenaBorder);
 
-  // 3. ダンジョン石柱 ＆ 燃え盛るかがり火台 (8基)
   const pillarMat = new THREE.MeshStandardMaterial({
     map: brickWallTex,
     roughness: 0.9,
@@ -1012,14 +1087,12 @@ function createDungeonEnvironment() {
     const pillarGroup = new THREE.Group();
     pillarGroup.position.set(x, 0, z);
 
-    // 台座
     const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 2.4), pillarMat);
     base.position.y = 0.4;
     base.castShadow = true;
     base.receiveShadow = true;
     pillarGroup.add(base);
 
-    // 主柱 (角柱)
     const height = 6.0 + (i % 2 === 0 ? 1.5 : 0);
     const col = new THREE.Mesh(new THREE.BoxGeometry(1.6, height, 1.6), pillarMat);
     col.position.y = height / 2 + 0.8;
@@ -1027,23 +1100,19 @@ function createDungeonEnvironment() {
     col.receiveShadow = true;
     pillarGroup.add(col);
 
-    // 柱頭 (キャピタル)
     const cap = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 2.2), pillarMat);
     cap.position.y = height + 1.1;
     cap.castShadow = true;
     pillarGroup.add(cap);
 
-    // 鉄のかがり火台 (ブラジエ)
     const brazier = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.4, 0.6, 8), ironMat);
     brazier.position.set(0, 3.2, 0.9);
     pillarGroup.add(brazier);
 
-    // 炎メッシュ
     const fireMesh = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 6), fireMat);
     fireMesh.position.set(0, 3.8, 0.9);
     pillarGroup.add(fireMesh);
 
-    // 揺らめく松明ポイントライト
     const torchLight = new THREE.PointLight(0xf97316, 1.8, 16);
     torchLight.position.set(x, 3.8, z + 0.9);
     torchLight.castShadow = (i % 2 === 0);
@@ -1059,7 +1128,6 @@ function createDungeonEnvironment() {
     scene.add(pillarGroup);
   }
 
-  // 4. 外周の崩れた遺跡石壁 (16セクション)
   for (let i = 0; i < 16; i++) {
     const angle = (i / 16) * Math.PI * 2 + 0.15;
     const radius = 37.5;
@@ -1076,7 +1144,6 @@ function createDungeonEnvironment() {
     scene.add(wall);
   }
 
-  // 5. ダンジョン胞子・微細なチリ粒子 (Ambient Spores)
   const sporeCount = 80;
   const sporeGeo = new THREE.BufferGeometry();
   const sporePositions = new Float32Array(sporeCount * 3);
@@ -1087,11 +1154,10 @@ function createDungeonEnvironment() {
     sporePositions[i * 3 + 1] = Math.random() * 8 + 0.3;
     sporePositions[i * 3 + 2] = (Math.random() - 0.5) * 60;
 
-    // 琥珀色と薄緑のダンジョン胞子
     if (Math.random() > 0.4) {
-      sporeColors[i * 3] = 0.96; sporeColors[i * 3 + 1] = 0.65; sporeColors[i * 3 + 2] = 0.2; // 琥珀
+      sporeColors[i * 3] = 0.96; sporeColors[i * 3 + 1] = 0.65; sporeColors[i * 3 + 2] = 0.2;
     } else {
-      sporeColors[i * 3] = 0.3; sporeColors[i * 3 + 1] = 0.8; sporeColors[i * 3 + 2] = 0.5; // 苔緑
+      sporeColors[i * 3] = 0.3; sporeColors[i * 3 + 1] = 0.8; sporeColors[i * 3 + 2] = 0.5;
     }
   }
 
@@ -1114,7 +1180,6 @@ function createDungeonEnvironment() {
 }
 
 function updateDungeonEnvironment(delta) {
-  // 松明の炎の揺らめき (Flicker)
   dungeonAnimatedObjects.torches.forEach((t) => {
     const flicker = Math.sin(Date.now() * 0.015 + t.phase) * 0.3 + (Math.random() - 0.5) * 0.2;
     t.light.intensity = Math.max(t.baseIntensity + flicker, 0.8);
@@ -1122,7 +1187,6 @@ function updateDungeonEnvironment(delta) {
     t.fireMesh.scale.set(fireScale, fireScale * 1.2, fireScale);
   });
 
-  // ダンジョン胞子の浮遊ゆらめき
   if (dungeonAnimatedObjects.sporeMesh && dungeonAnimatedObjects.sporePositions) {
     const pos = dungeonAnimatedObjects.sporePositions;
     for (let i = 0; i < pos.length / 3; i++) {
@@ -1226,7 +1290,7 @@ class SwordParticleSystem {
 }
 
 // =============================================================================
-// 8. ハイディテール・プレイヤーキャラクター生成 (甲冑・肩当て・ベルト・精巧な刀)
+// 8. ハイディテール・プレイヤーキャラクター生成
 // =============================================================================
 class Player {
   constructor() {
@@ -1292,14 +1356,14 @@ class Player {
     this.goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
     this.visorMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
 
-    // 1. 胴体インナー
+    // 胴体インナー
     const bodyGeo = new THREE.BoxGeometry(0.68, 0.78, 0.42);
     this.body = new THREE.Mesh(bodyGeo, this.heroMat);
     this.body.position.y = 1.1;
     this.body.castShadow = true;
     this.defaultMeshGroup.add(this.body);
 
-    // 重厚なブレストプレート (胸甲)
+    // 重厚なブレストプレート
     const breastplateGeo = new THREE.BoxGeometry(0.72, 0.45, 0.16);
     this.breastplate = new THREE.Mesh(breastplateGeo, this.armorMat);
     this.breastplate.position.set(0, 0.12, 0.18);
@@ -1322,26 +1386,23 @@ class Player {
     buckle.position.set(0, -0.22, 0.24);
     this.body.add(buckle);
 
-    // 2. 頭部 & ヘルメット
+    // 頭部 & ヘルメット
     const headGeo = new THREE.BoxGeometry(0.42, 0.42, 0.42);
     this.head = new THREE.Mesh(headGeo, this.skinMat);
     this.head.position.set(0, 0.62, 0);
     this.head.castShadow = true;
     this.body.add(this.head);
 
-    // 額当て / ヘルメットガード
     const browGeo = new THREE.BoxGeometry(0.46, 0.14, 0.12);
     this.browMesh = new THREE.Mesh(browGeo, this.armorMat);
     this.browMesh.position.set(0, 0.15, 0.18);
     this.head.add(this.browMesh);
 
-    // 光るサイバー/ナイトバイザー
     const visorGeo = new THREE.BoxGeometry(0.36, 0.08, 0.06);
     this.visorMesh = new THREE.Mesh(visorGeo, this.visorMat);
     this.visorMesh.position.set(0, 0.04, 0.23);
     this.head.add(this.visorMesh);
 
-    // 揺れる髪束 / ポニーテール
     const hairMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
     const hairGeo = new THREE.BoxGeometry(0.14, 0.38, 0.14);
     this.hair = new THREE.Mesh(hairGeo, hairMat);
@@ -1352,12 +1413,11 @@ class Player {
     this.headGearGroup = new THREE.Group();
     this.head.add(this.headGearGroup);
 
-    // 3. 腕・立体肩当て (ポールドロン) ＆ 籠手 (ガントレット)
+    // 腕・立体肩当て ＆ 籠手
     const armGeo = new THREE.BoxGeometry(0.18, 0.65, 0.18);
     const pauldronGeo = new THREE.BoxGeometry(0.32, 0.24, 0.32);
     const gauntletGeo = new THREE.BoxGeometry(0.22, 0.28, 0.22);
 
-    // 左腕
     this.leftArm = new THREE.Mesh(armGeo, this.heroMat);
     this.leftArm.position.set(-0.48, 0.15, 0);
     this.leftArm.castShadow = true;
@@ -1371,7 +1431,6 @@ class Player {
     leftGauntlet.position.set(0, -0.18, 0);
     this.leftArm.add(leftGauntlet);
 
-    // 右腕 (武器持ち手)
     this.rightArmPivot = new THREE.Group();
     this.rightArmPivot.position.set(0.48, 0.3, 0);
     this.body.add(this.rightArmPivot);
@@ -1391,12 +1450,11 @@ class Player {
 
     this.createSword();
 
-    // 4. 脚・立体膝当て (ニーガード) ＆ グリーブ (すね当て)
+    // 脚・立体膝当て ＆ すね当て
     const legGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
     const kneeGeo = new THREE.BoxGeometry(0.28, 0.16, 0.12);
     const bootGeo = new THREE.BoxGeometry(0.26, 0.18, 0.32);
 
-    // 左脚
     this.leftLegPivot = new THREE.Group();
     this.leftLegPivot.position.set(-0.2, 0.7, 0);
     this.defaultMeshGroup.add(this.leftLegPivot);
@@ -1414,7 +1472,6 @@ class Player {
     leftBoot.position.set(0, -0.28, 0.04);
     this.leftLeg.add(leftBoot);
 
-    // 右脚
     this.rightLegPivot = new THREE.Group();
     this.rightLegPivot.position.set(0.2, 0.7, 0);
     this.defaultMeshGroup.add(this.rightLegPivot);
@@ -1437,21 +1494,18 @@ class Player {
     this.swordGroup = new THREE.Group();
     this.swordGroup.position.set(0, -0.5, 0.15);
 
-    // 柄 (つか) & 柄巻きディテール
     const hiltGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.38, 8);
     const hiltMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
     const hilt = new THREE.Mesh(hiltGeo, hiltMat);
     hilt.rotation.x = Math.PI / 2;
     this.swordGroup.add(hilt);
 
-    // 鍔 (ツバ)
     const guardGeo = new THREE.BoxGeometry(0.22, 0.04, 0.16);
     const guardMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.2 });
     this.guardMesh = new THREE.Mesh(guardGeo, guardMat);
     this.guardMesh.position.z = 0.2;
     this.swordGroup.add(this.guardMesh);
 
-    // 刀身 (シャープな両刃/片刃ブレード)
     const bladeGeo = new THREE.BoxGeometry(0.08, 0.02, 1.35);
     this.bladeMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
@@ -1465,7 +1519,6 @@ class Player {
     this.bladeMesh.castShadow = true;
     this.swordGroup.add(this.bladeMesh);
 
-    // 刃紋 / 光るエッジライン
     const edgeGeo = new THREE.BoxGeometry(0.09, 0.025, 1.35);
     const edgeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
     const edge = new THREE.Mesh(edgeGeo, edgeMat);
@@ -1833,9 +1886,10 @@ class Player {
   performAttackHitCheck() {
     const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
     const pPos = this.group.position;
+    let hitAny = false;
 
     zombieManager.zombies.forEach((zombie) => {
-      if (zombie.isDead) return;
+      if (zombie.isDead || zombie.isDying) return;
 
       const zPos = zombie.group.position;
       const toZombie = new THREE.Vector3().subVectors(zPos, pPos);
@@ -1848,20 +1902,34 @@ class Player {
         const minDot = Math.cos(CONFIG.attackAngle / 2);
 
         if (dot >= minDot) {
+          hitAny = true;
           zombie.die(toZombie);
         }
       }
     });
+
+    if (hitAny) {
+      // 迫力のズバッ！サウンド & ヒットストップ
+      soundManager.playZubattoSlash();
+      state.hitStopTimer = 0.055;
+      cameraController.shake(0.25);
+    }
   }
 }
 
 // =============================================================================
-// 9. ハイディテール・ゾンビ（アンデッド）システム (牙・窪んだ眼・ボロ布・鉤爪)
+// 9. ゾンビ（アンデッド）システム (断末魔・吹き飛び崩壊死亡アクション)
 // =============================================================================
 class Zombie {
   constructor() {
     this.group = new THREE.Group();
     this.isDead = false;
+    this.isDying = false;
+    this.dyingTimer = 0;
+    this.maxDyingDuration = 1.3;
+    this.knockbackVelocity = new THREE.Vector3();
+    this.angularVelocity = new THREE.Vector3();
+
     this.walkCycle = Math.random() * 10;
     this.speed = CONFIG.zombieSpeed * (0.85 + Math.random() * 0.3);
 
@@ -1880,38 +1948,33 @@ class Zombie {
   }
 
   buildDefaultMesh() {
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 }); // 腐敗グリーン
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.8 });
     const darkSkinMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.9 });
-    const ragMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 }); // 破れたボロ布
-    const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 }); // 露出した骨/牙
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 }); // 邪悪な赤眼
+    const ragMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
     const clawMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.3, metalness: 0.8 });
 
-    // 1. 胴体 (ボロ布ベスト ＆ 露出した肋骨)
     this.body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.78, 0.42), skinMat);
     this.body.position.y = 1.05;
     this.body.castShadow = true;
     this.defaultMeshGroup.add(this.body);
 
-    // 破けたボロ布ベスト
     const ragVest = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.5, 0.46), ragMat);
     ragVest.position.set(0, 0.1, 0);
     this.body.add(ragVest);
 
-    // 露出した肋骨 (骨パーツ)
     for (let r = 0; r < 3; r++) {
       const rib = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.12), boneMat);
       rib.position.set(0, -0.05 - r * 0.1, 0.2);
       this.body.add(rib);
     }
 
-    // 2. 頭部 (窪んだ眼窩・鋭い牙・傷跡)
     this.head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
     this.head.position.set(0, 0.62, 0);
     this.head.castShadow = true;
     this.body.add(this.head);
 
-    // 窪んだ眼窩 (黒いアイソケット)
     const socketGeo = new THREE.BoxGeometry(0.12, 0.12, 0.04);
     const socketMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
     const lSocket = new THREE.Mesh(socketGeo, socketMat);
@@ -1921,17 +1984,15 @@ class Zombie {
     rSocket.position.set(0.12, 0.06, 0.22);
     this.head.add(rSocket);
 
-    // 光る赤眼
     const eyeGeo = new THREE.SphereGeometry(0.045, 6, 6);
-    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.12, 0.06, 0.23);
-    this.head.add(leftEye);
+    this.leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    this.leftEye.position.set(-0.12, 0.06, 0.23);
+    this.head.add(this.leftEye);
 
-    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.12, 0.06, 0.23);
-    this.head.add(rightEye);
+    this.rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+    this.rightEye.position.set(0.12, 0.06, 0.23);
+    this.head.add(this.rightEye);
 
-    // むき出しの牙/鋭い歯 (上あご・下あご)
     for (let t = 0; t < 4; t++) {
       const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 4), boneMat);
       tooth.position.set(-0.12 + t * 0.08, -0.14, 0.22);
@@ -1939,7 +2000,6 @@ class Zombie {
       this.head.add(tooth);
     }
 
-    // 3. 腕 (不気味に前方に伸びた腕 ＆ 鋭い黒い鉤爪)
     const armGeo = new THREE.BoxGeometry(0.18, 0.18, 0.65);
 
     this.leftArm = new THREE.Mesh(armGeo, skinMat);
@@ -1948,7 +2008,6 @@ class Zombie {
     this.leftArm.castShadow = true;
     this.body.add(this.leftArm);
 
-    // 左鉤爪
     for (let c = 0; c < 3; c++) {
       const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), clawMat);
       claw.position.set(-0.06 + c * 0.06, 0, 0.38);
@@ -1962,7 +2021,6 @@ class Zombie {
     this.rightArm.castShadow = true;
     this.body.add(this.rightArm);
 
-    // 右鉤爪
     for (let c = 0; c < 3; c++) {
       const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), clawMat);
       claw.position.set(-0.06 + c * 0.06, 0, 0.38);
@@ -1970,7 +2028,6 @@ class Zombie {
       this.rightArm.add(claw);
     }
 
-    // 4. 脚 (破れたズボン ＆ 腐敗した足)
     const legGeo = new THREE.BoxGeometry(0.24, 0.68, 0.24);
 
     this.leftLeg = new THREE.Mesh(legGeo, ragMat);
@@ -2007,13 +2064,21 @@ class Zombie {
 
   spawn(x, z) {
     this.group.position.set(x, 0, z);
+    this.group.rotation.set(0, 0, 0);
     this.isDead = false;
+    this.isDying = false;
+    this.dyingTimer = 0;
     this.group.visible = true;
     scene.add(this.group);
   }
 
   update(delta, playerPos) {
     if (this.isDead) return;
+
+    if (this.isDying) {
+      this.updateDying(delta);
+      return;
+    }
 
     const dir = new THREE.Vector3().subVectors(playerPos, this.group.position);
     dir.y = 0;
@@ -2041,20 +2106,83 @@ class Zombie {
     }
   }
 
-  die(hitDir) {
-    this.isDead = true;
-    scene.remove(this.group);
+  // 断末魔の吹き飛び・崩壊モーション
+  updateDying(delta) {
+    this.dyingTimer += delta;
 
-    soundManager.playHit();
+    // 吹き飛び物理
+    this.knockbackVelocity.y -= 14.0 * delta; // 重力
+    this.group.position.addScaledVector(this.knockbackVelocity, delta);
+
+    // 地面への激突
+    if (this.group.position.y <= 0) {
+      this.group.position.y = 0;
+      this.knockbackVelocity.x *= 0.5;
+      this.knockbackVelocity.z *= 0.5;
+      this.knockbackVelocity.y = 0;
+    }
+
+    // のけぞり回転
+    this.group.rotation.x += this.angularVelocity.x * delta;
+    this.group.rotation.z += this.angularVelocity.z * delta;
+
+    // 断末魔の痙攣 & ソウル煙エフェクト
+    if (this.dyingTimer > 0.3 && Math.random() > 0.6) {
+      particleSystem.spawnSoulSmoke(this.group.position);
+    }
+
+    // 縮小フェードアウト
+    if (this.dyingTimer > 0.7) {
+      const fadeProgress = (this.dyingTimer - 0.7) / (this.maxDyingDuration - 0.7);
+      const scale = Math.max(1.0 - fadeProgress, 0.01);
+      this.group.scale.set(scale, scale, scale);
+    }
+
+    if (this.dyingTimer >= this.maxDyingDuration) {
+      this.isDead = true;
+      scene.remove(this.group);
+    }
+  }
+
+  die(hitDir) {
+    if (this.isDying || this.isDead) return;
+
+    this.isDying = true;
+    this.dyingTimer = 0;
+
+    // ゾンビの断末魔の叫び！
+    soundManager.playZombieDeathScream();
+
+    // 勢いよく吹き飛ぶノックバックベクトル
+    const blowForce = 7.5 + Math.random() * 2.5;
+    this.knockbackVelocity.set(
+      hitDir.x * blowForce,
+      4.5 + Math.random() * 2.0,
+      hitDir.z * blowForce
+    );
+
+    // 吹き飛ぶ回転角
+    this.angularVelocity.set(
+      (Math.random() - 0.5) * 8.0,
+      0,
+      (Math.random() - 0.5) * 8.0
+    );
+
+    // のけぞり姿勢
+    this.head.rotation.x = -0.6;
+    this.leftArm.rotation.x = -0.8;
+    this.rightArm.rotation.x = -0.8;
+
+    // 激しい斬撃スパークと破片
     particleSystem.spawnDeathParticles(this.group.position, hitDir);
+    particleSystem.spawnSlashSparks(this.group.position);
 
     state.kills++;
     state.coins += 10;
     saveData.coins = state.coins;
     SaveManager.save(saveData);
 
-    updateHUD(this.group.position);
-    cameraController.shake(0.12);
+    updateHUD(this.group.position, true); // trueで爽快なSLASH!!表示
   }
 }
 
@@ -2082,7 +2210,7 @@ class ZombieManager {
   }
 
   getActiveCount() {
-    return this.zombies.filter(z => !z.isDead).length;
+    return this.zombies.filter(z => !z.isDead && !z.isDying).length;
   }
 
   spawnOne(playerPos) {
@@ -2098,12 +2226,13 @@ class ZombieManager {
 }
 
 // =============================================================================
-// 10. パーティクルシステム (アンデッド破片 & スパーク)
+// 10. パーティクルシステム (スラッシュスパーク・ソウル煙・破片)
 // =============================================================================
 class ParticleSystem {
   constructor() {
     this.particles = [];
     this.particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+    this.sparkGeo = new THREE.BoxGeometry(0.08, 0.25, 0.08);
     this.materials = [
       new THREE.MeshStandardMaterial({ color: 0x166534 }),
       new THREE.MeshStandardMaterial({ color: 0x334155 }),
@@ -2122,9 +2251,9 @@ class ParticleSystem {
 
       const spread = 4.5;
       const vel = new THREE.Vector3(
-        (Math.random() - 0.5) * spread + hitDir.x * 3.5,
-        Math.random() * 4.5 + 2.0,
-        (Math.random() - 0.5) * spread + hitDir.z * 3.5
+        (Math.random() - 0.5) * spread + hitDir.x * 4.5,
+        Math.random() * 5.0 + 2.5,
+        (Math.random() - 0.5) * spread + hitDir.z * 4.5
       );
 
       scene.add(mesh);
@@ -2133,8 +2262,62 @@ class ParticleSystem {
         vel,
         rotSpeed: new THREE.Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10),
         life: 1.0,
+        maxLife: 1.0,
       });
     }
+  }
+
+  // ズバッ！と飛び散る強烈な斬撃スパーク
+  spawnSlashSparks(pos) {
+    const count = 14;
+    const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending });
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(this.sparkGeo, sparkMat);
+      mesh.position.copy(pos);
+      mesh.position.y += 1.0;
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 7.0 + Math.random() * 5.0;
+      const vel = new THREE.Vector3(
+        Math.cos(angle) * speed,
+        (Math.random() - 0.2) * 6.0,
+        Math.sin(angle) * speed
+      );
+
+      scene.add(mesh);
+      this.particles.push({
+        mesh,
+        vel,
+        rotSpeed: new THREE.Vector3(Math.random() * 15, Math.random() * 15, Math.random() * 15),
+        life: 0.35,
+        maxLife: 0.35,
+      });
+    }
+  }
+
+  // 昇天するソウル煙
+  spawnSoulSmoke(pos) {
+    const smokeMat = new THREE.MeshBasicMaterial({
+      color: Math.random() > 0.5 ? 0xa855f7 : 0x475569,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const mesh = new THREE.Mesh(this.particleGeo, smokeMat);
+    mesh.position.copy(pos);
+    mesh.position.x += (Math.random() - 0.5) * 0.6;
+    mesh.position.z += (Math.random() - 0.5) * 0.6;
+    mesh.position.y += Math.random() * 0.4;
+
+    const vel = new THREE.Vector3((Math.random() - 0.5) * 0.5, Math.random() * 2.0 + 1.2, (Math.random() - 0.5) * 0.5);
+
+    scene.add(mesh);
+    this.particles.push({
+      mesh,
+      vel,
+      rotSpeed: new THREE.Vector3(2, 2, 2),
+      life: 0.65,
+      maxLife: 0.65,
+    });
   }
 
   spawnMagicHitParticles(pos, bulletType = 'magic') {
@@ -2143,23 +2326,17 @@ class ParticleSystem {
     let color2 = 0xfde047;
 
     if (bulletType === 'rock') {
-      color1 = 0x78716c;
-      color2 = 0xa8a29e;
+      color1 = 0x78716c; color2 = 0xa8a29e;
     } else if (bulletType === 'fireball') {
-      color1 = 0xef4444;
-      color2 = 0xf97316;
+      color1 = 0xef4444; color2 = 0xf97316;
     } else if (bulletType === 'mud') {
-      color1 = 0xf43f5e;
-      color2 = 0x854d0e;
+      color1 = 0xf43f5e; color2 = 0x854d0e;
     } else if (bulletType === 'bone') {
-      color1 = 0xf8fafc;
-      color2 = 0xfbbf24;
+      color1 = 0xf8fafc; color2 = 0xfbbf24;
     } else if (bulletType === 'laser') {
-      color1 = 0x38bdf8;
-      color2 = 0xfde047;
+      color1 = 0x38bdf8; color2 = 0xfde047;
     } else if (bulletType === 'rainbow') {
-      color1 = 0xa855f7;
-      color2 = 0x38bdf8;
+      color1 = 0xa855f7; color2 = 0x38bdf8;
     }
 
     const mat1 = new THREE.MeshBasicMaterial({ color: color1 });
@@ -2185,6 +2362,7 @@ class ParticleSystem {
         vel,
         rotSpeed: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12),
         life: 0.75,
+        maxLife: 0.75,
       });
     }
   }
@@ -2192,7 +2370,7 @@ class ParticleSystem {
   update(delta) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
-      p.life -= delta * 1.8;
+      p.life -= delta;
 
       if (p.life <= 0) {
         scene.remove(p.mesh);
@@ -2201,7 +2379,7 @@ class ParticleSystem {
         continue;
       }
 
-      p.vel.y -= 14.0 * delta;
+      p.vel.y -= 12.0 * delta;
       p.mesh.position.addScaledVector(p.vel, delta);
       p.mesh.rotation.x += p.rotSpeed.x * delta;
       p.mesh.rotation.y += p.rotSpeed.y * delta;
@@ -2213,7 +2391,7 @@ class ParticleSystem {
         p.vel.z *= 0.7;
       }
 
-      const scale = p.life;
+      const scale = p.life / p.maxLife;
       p.mesh.scale.set(scale, scale, scale);
     }
   }
@@ -2323,7 +2501,7 @@ class MagicProjectile {
       return;
     }
 
-    if (this.target && !this.target.isDead) {
+    if (this.target && !this.target.isDead && !this.target.isDying) {
       this.targetLastPos.copy(this.target.group.position).add(new THREE.Vector3(0, 1.0, 0));
       const speed = this.velocity.length();
       const desired = new THREE.Vector3().subVectors(this.targetLastPos, this.group.position).normalize().multiplyScalar(speed);
@@ -2341,7 +2519,7 @@ class MagicProjectile {
     }
 
     zombieManager.zombies.forEach((zombie) => {
-      if (zombie.isDead || this.isDead) return;
+      if (zombie.isDead || zombie.isDying || this.isDead) return;
 
       const zCenter = zombie.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
       const dist = this.group.position.distanceTo(zCenter);
@@ -2742,7 +2920,7 @@ class BuddyPet {
     let minDist = CONFIG.petAttackRange;
 
     zombieManager.zombies.forEach((zombie) => {
-      if (zombie.isDead) return;
+      if (zombie.isDead || zombie.isDying) return;
       const dist = this.group.position.distanceTo(zombie.group.position);
       if (dist < minDist) {
         minDist = dist;
@@ -2773,7 +2951,6 @@ class BuddyPet {
   }
 }
 
-// 複数ペットマネージャー (最大3体編成)
 class PetManager {
   constructor(player) {
     this.player = player;
@@ -2822,7 +2999,7 @@ class CameraController {
     if (this.shakeIntensity > 0) {
       idealPos.x += (Math.random() - 0.5) * this.shakeIntensity;
       idealPos.y += (Math.random() - 0.5) * this.shakeIntensity;
-      this.shakeIntensity = Math.max(0, this.shakeIntensity - delta * 1.5);
+      this.shakeIntensity = Math.max(0, this.shakeIntensity - delta * 2.0);
     }
 
     this.camera.position.lerp(idealPos, CONFIG.cameraLerp);
@@ -2831,14 +3008,14 @@ class CameraController {
     this.currentLookAt.lerp(idealLookAt, CONFIG.cameraLerp * 1.5);
     this.camera.lookAt(this.currentLookAt);
 
-    dirLight.position.set(targetPos.x + 12, 20, targetPos.z - 10);
+    dirLight.position.set(targetPos.x - 12, 18, targetPos.z + 10);
     dirLight.target.position.copy(targetPos);
     dirLight.target.updateMatrixWorld();
   }
 }
 
 // =============================================================================
-// 13. UI & タッチ操作 (iPad / Safari 最適化)
+// 13. UI & タッチ操作
 // =============================================================================
 function setupControls(player) {
   const joystickZone = document.getElementById('joystick-zone');
@@ -2974,7 +3151,7 @@ function setupControls(player) {
   });
 }
 
-function updateHUD(worldPos) {
+function updateHUD(worldPos, isSlash = false) {
   const killEl = document.getElementById('kill-count');
   const coinEl = document.getElementById('coin-count');
   const shopCoinEl = document.getElementById('shop-coin-display');
@@ -3007,9 +3184,14 @@ function updateHUD(worldPos) {
 
     const popup = document.createElement('div');
     popup.className = 'coin-popup';
-    popup.innerText = '+10 COINS';
+    popup.innerText = isSlash ? '⚔️ SLASH! +10🪙' : '+10 COINS';
     popup.style.left = `${x}px`;
     popup.style.top = `${y}px`;
+    if (isSlash) {
+      popup.style.color = '#fef08a';
+      popup.style.textShadow = '0 0 12px #ef4444, 0 0 24px #f59e0b';
+      popup.style.transform = 'scale(1.2)';
+    }
     document.getElementById('ui-layer').appendChild(popup);
 
     setTimeout(() => popup.remove(), 900);
@@ -3421,21 +3603,27 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
 
-  const delta = Math.min(clock.getDelta(), 0.1);
+  const rawDelta = Math.min(clock.getDelta(), 0.1);
 
-  // ダンジョン背景アニメーション (松明の炎の揺らめき、胞子の浮遊)
-  updateDungeonEnvironment(delta);
+  // ヒットストップ処理 (敵を斬った瞬間に一瞬ゲーム内時間が極微停止)
+  let delta = rawDelta;
+  if (state.hitStopTimer > 0) {
+    state.hitStopTimer -= rawDelta;
+    delta = rawDelta * 0.08; // ほぼ停止
+  }
+
+  updateDungeonEnvironment(rawDelta);
 
   if (!state.isPaused) {
     player.update(delta);
     petManager.update(delta);
     projectileManager.update(delta);
     zombieManager.update(delta, player.group.position);
-    particleSystem.update(delta);
+    particleSystem.update(rawDelta);
     swordParticleSystem.update(delta);
-    cameraController.update(delta);
+    cameraController.update(rawDelta);
   } else {
-    swordParticleSystem.update(delta * 0.5);
+    swordParticleSystem.update(rawDelta * 0.5);
   }
 
   renderer.render(scene, camera);
