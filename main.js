@@ -1,6 +1,6 @@
 /**
  * Blade & Buddy - 3D Dungeon Action Game
- * Detailed Dungeon Environment + High-Detail Hero & Undead Skins + Zubatto Slash Sound & Zombie Death Scream Action
+ * 3-Stage Combo Slash Motion (Top-Left to Bottom-Right -> Heavy Slash -> Horizontal Finisher)
  */
 
 // =============================================================================
@@ -12,7 +12,7 @@ const CONFIG = {
   zombieSpeed: 2.2,
   zombieMaxCount: 15,
   spawnInterval: 2.2,
-  attackCooldown: 0.35,
+  attackCooldown: 0.30,
   attackRange: 2.8,
   attackAngle: Math.PI * 0.65,
   cameraOffset: new THREE.Vector3(0, 5.2, -6.5),
@@ -64,13 +64,13 @@ const state = {
   isAttacking: false,
   attackTimer: 0,
   canAttack: true,
-  hitStopTimer: 0, // ヒットストップ
+  hitStopTimer: 0,
   moveVector: new THREE.Vector2(0, 0),
   keys: { forward: false, backward: false, left: false, right: false },
 };
 
 // =============================================================================
-// 1.2 プロシージャルテクスチャ生成器 (リアルな石畳・石レンガ)
+// 1.2 プロシージャルテクスチャ生成器
 // =============================================================================
 class TextureGenerator {
   static createStoneFloorTexture() {
@@ -386,37 +386,41 @@ class SoundManager {
     osc.stop(time + dur);
   }
 
-  // --- 空振りスイング音 ---
-  playAttackSlash() {
+  // --- 空振りスイング音 (コンボ段階でピッチと迫力が変化) ---
+  playAttackSlash(comboStep = 0) {
     if (!this.ctx || this.isMuted) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     const filter = this.ctx.createBiquadFilter();
 
+    const startFreq = comboStep === 2 ? 850 : (comboStep === 1 ? 720 : 600);
+    const endFreq = comboStep === 2 ? 90 : 120;
+
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.12);
+    osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + 0.14);
 
     filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(1600, this.ctx.currentTime);
+    filter.frequency.setValueAtTime(comboStep === 2 ? 1800 : 1500, this.ctx.currentTime);
 
-    gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(comboStep === 2 ? 0.45 : 0.35, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.14);
 
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.sfxGain);
     osc.start();
-    osc.stop(this.ctx.currentTime + 0.13);
+    osc.stop(this.ctx.currentTime + 0.15);
   }
 
-  // --- 迫力の「ズバッッ！」斬撃インパクト音 ---
-  playZubattoSlash() {
+  // --- 迫力の「ズバッッ！」斬撃インパクト音 (3段目は特大重低音) ---
+  playZubattoSlash(comboStep = 0) {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;
+    const isFinisher = (comboStep === 2);
 
     // 1. 鋭い高速切り裂きノイズ (Slash Sweep)
-    const bufferSize = this.ctx.sampleRate * 0.18;
+    const bufferSize = this.ctx.sampleRate * (isFinisher ? 0.24 : 0.18);
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -425,57 +429,55 @@ class SoundManager {
 
     const noiseFilter = this.ctx.createBiquadFilter();
     noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.setValueAtTime(3200, now);
-    noiseFilter.frequency.exponentialRampToValueAtTime(400, now + 0.16);
-    noiseFilter.Q.setValueAtTime(3.5, now);
+    noiseFilter.frequency.setValueAtTime(isFinisher ? 3800 : 3200, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(isFinisher ? 250 : 400, now + 0.18);
+    noiseFilter.Q.setValueAtTime(isFinisher ? 4.5 : 3.5, now);
 
     const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.9, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+    noiseGain.gain.setValueAtTime(isFinisher ? 1.1 : 0.9, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
 
     noise.connect(noiseFilter);
     noiseFilter.connect(noiseGain);
     noiseGain.connect(this.sfxGain);
     noise.start(now);
-    noise.stop(now + 0.17);
+    noise.stop(now + 0.19);
 
-    // 2. 重厚な肉体断裂インパクト (Heavy Body Hit / Sub Impact)
+    // 2. 重厚な肉体断裂インパクト
     const subOsc = this.ctx.createOscillator();
     const subGain = this.ctx.createGain();
     subOsc.type = 'triangle';
-    subOsc.frequency.setValueAtTime(180, now);
-    subOsc.frequency.exponentialRampToValueAtTime(30, now + 0.22);
+    subOsc.frequency.setValueAtTime(isFinisher ? 220 : 180, now);
+    subOsc.frequency.exponentialRampToValueAtTime(25, now + 0.25);
 
-    subGain.gain.setValueAtTime(1.0, now);
-    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+    subGain.gain.setValueAtTime(isFinisher ? 1.2 : 1.0, now);
+    subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
 
     subOsc.connect(subGain);
     subGain.connect(this.sfxGain);
     subOsc.start(now);
-    subOsc.stop(now + 0.23);
+    subOsc.stop(now + 0.26);
 
-    // 3. 刃の金属スパーク音 (Blade Clang Spark)
+    // 3. 刃の金属スパーク音
     const bladeOsc = this.ctx.createOscillator();
     const bladeGain = this.ctx.createGain();
     bladeOsc.type = 'sawtooth';
-    bladeOsc.frequency.setValueAtTime(1200, now);
-    bladeOsc.frequency.exponentialRampToValueAtTime(180, now + 0.1);
+    bladeOsc.frequency.setValueAtTime(isFinisher ? 1600 : 1200, now);
+    bladeOsc.frequency.exponentialRampToValueAtTime(isFinisher ? 120 : 180, now + 0.12);
 
-    bladeGain.gain.setValueAtTime(0.5, now);
-    bladeGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    bladeGain.gain.setValueAtTime(isFinisher ? 0.65 : 0.5, now);
+    bladeGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
 
     bladeOsc.connect(bladeGain);
     bladeGain.connect(this.sfxGain);
     bladeOsc.start(now);
-    bladeOsc.stop(now + 0.11);
+    bladeOsc.stop(now + 0.13);
   }
 
-  // --- ゾンビの断末魔・悲鳴サウンド ---
   playZombieDeathScream() {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;
 
-    // 不気味なアンデッドのグロウル・断末魔の叫び (FM Synthesis)
     const carrier = this.ctx.createOscillator();
     const modulator = this.ctx.createOscillator();
     const modGain = this.ctx.createGain();
@@ -483,12 +485,11 @@ class SoundManager {
     const filter = this.ctx.createBiquadFilter();
 
     carrier.type = 'sawtooth';
-    // 高い叫びから苦悶のうめき声へと下降
     carrier.frequency.setValueAtTime(340 + Math.random() * 80, now);
     carrier.frequency.exponentialRampToValueAtTime(65, now + 0.45);
 
     modulator.type = 'sine';
-    modulator.frequency.setValueAtTime(45, now); // ゾンビの喉の震え
+    modulator.frequency.setValueAtTime(45, now);
     modulator.frequency.linearRampToValueAtTime(18, now + 0.45);
 
     modGain.gain.setValueAtTime(120, now);
@@ -1290,7 +1291,7 @@ class SwordParticleSystem {
 }
 
 // =============================================================================
-// 8. ハイディテール・プレイヤーキャラクター生成
+// 8. プレイヤーキャラクター生成 (3段コンボ斬撃モーション対応)
 // =============================================================================
 class Player {
   constructor() {
@@ -1302,6 +1303,10 @@ class Player {
     this.targetRotation = 0;
     this.walkCycle = 0;
     this.isMoving = false;
+
+    // 3段コンボ管理
+    this.comboStep = 0; // 0: 左上→右下, 1: 左上→右下(連撃), 2: 左→右(水平薙ぎ払い)
+    this.comboResetTimer = 0;
 
     this.hasCustomModel = false;
     this.customModel = null;
@@ -1325,7 +1330,8 @@ class Player {
     this.group.add(this.defaultMeshGroup);
     this.buildDefaultMesh();
 
-    const slashGeo = new THREE.RingGeometry(1.2, 2.2, 16, 1, 0, Math.PI * 0.65);
+    // 斬撃エフェクト (コンボごとに形状と角度を動的に調整)
+    const slashGeo = new THREE.RingGeometry(1.2, 2.3, 20, 1, 0, Math.PI * 0.75);
     this.slashMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       side: THREE.DoubleSide,
@@ -1749,6 +1755,14 @@ class Player {
   }
 
   update(delta) {
+    // コンボ受付タイマー
+    if (this.comboResetTimer > 0) {
+      this.comboResetTimer -= delta;
+      if (this.comboResetTimer <= 0) {
+        this.comboStep = 0; // コンボリセット
+      }
+    }
+
     let screenX = state.moveVector.x;
     let screenZ = state.moveVector.y;
 
@@ -1817,12 +1831,14 @@ class Player {
           this.rightArmPivot.rotation.y = 0;
           this.rightArmPivot.rotation.z = 0;
           this.body.position.y = 1.1 + Math.abs(Math.sin(this.walkCycle * 2)) * 0.08;
+          this.body.rotation.set(0, 0, 0);
         } else {
           this.leftLegPivot.rotation.x = 0;
           this.rightLegPivot.rotation.x = 0;
           this.leftArm.rotation.x = 0;
           this.rightArmPivot.rotation.set(0, 0, 0);
           this.body.position.y = 1.1 + Math.sin(this.walkCycle) * 0.03;
+          this.body.rotation.set(0, 0, 0);
         }
       }
     }
@@ -1838,11 +1854,14 @@ class Player {
     if (!state.canAttack || state.isAttacking || state.isPaused) return;
 
     soundManager.unlock();
-    soundManager.playAttackSlash();
+
+    // コンボステップに応じた攻撃音
+    soundManager.playAttackSlash(this.comboStep);
 
     state.isAttacking = true;
     state.canAttack = false;
     state.attackTimer = 0;
+    this.comboResetTimer = 0.85; // 0.85秒以内なら次のコンボへ
 
     const btn = document.getElementById('btn-attack');
     if (btn) {
@@ -1860,33 +1879,87 @@ class Player {
 
     this.performAttackHitCheck();
 
+    // 次のコンボへ進める (0 -> 1 -> 2 -> 0)
+    const currentStep = this.comboStep;
+    this.comboStep = (this.comboStep + 1) % 3;
+
     setTimeout(() => {
       state.canAttack = true;
-    }, CONFIG.attackCooldown * 1000);
+    }, (currentStep === 2 ? 0.4 : CONFIG.attackCooldown) * 1000);
   }
 
+  // 3段コンボ斬撃アニメーション
   updateAttackAnimation(delta) {
     state.attackTimer += delta;
-    const progress = Math.min(state.attackTimer / 0.22, 1.0);
+    const duration = (this.comboStep === 0) ? 0.28 : 0.24; // 3段目は少し長めの豪快な振り
+    const progress = Math.min(state.attackTimer / duration, 1.0);
+
+    // 直前に実行した攻撃（currentActiveCombo = (this.comboStep + 2) % 3）
+    const activeCombo = (this.comboStep + 2) % 3;
 
     if (progress < 1.0) {
-      this.rightArmPivot.rotation.x = 0.5 - progress * 1.2;
-      this.rightArmPivot.rotation.y = -0.6 + progress * 2.2;
-      this.rightArmPivot.rotation.z = -0.3;
+      const ease = Math.sin(progress * Math.PI * 0.5); // イージング
 
-      this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 0.85;
-      this.slashMesh.rotation.z = -Math.PI * 0.3 + progress * Math.PI * 0.7;
+      if (activeCombo === 0) {
+        // 【1段目: 左上から右下への袈裟斬り】
+        // 左上高く持ち上げて、右下へ斜めに一気に斬り下ろす
+        this.rightArmPivot.rotation.x = 0.9 - ease * 1.6;  // 0.9 -> -0.7
+        this.rightArmPivot.rotation.y = -0.8 + ease * 1.6; // -0.8 -> 0.8
+        this.rightArmPivot.rotation.z = 0.6 - ease * 1.0;  // 0.6 -> -0.4
+
+        this.body.rotation.y = -0.25 + ease * 0.55;
+        this.body.rotation.z = -0.15 + ease * 0.25;
+
+        // 斬撃軌跡リング (左上→右下の斜めリング)
+        this.slashMesh.position.set(0.1, 1.1, 0.85);
+        this.slashMesh.rotation.set(Math.PI / 3, -0.35, -0.6 + ease * 0.8);
+        this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 0.9;
+
+      } else if (activeCombo === 1) {
+        // 【2段目: 左上から右下への深く鋭い連撃斬り】
+        // さらに深く左上に溜めて、右下へ踏み込んで叩き斬る
+        this.rightArmPivot.rotation.x = 1.1 - ease * 1.9;  // 1.1 -> -0.8
+        this.rightArmPivot.rotation.y = -0.9 + ease * 1.8; // -0.9 -> 0.9
+        this.rightArmPivot.rotation.z = 0.7 - ease * 1.2;  // 0.7 -> -0.5
+
+        this.body.rotation.y = -0.35 + ease * 0.7;
+        this.body.rotation.x = ease * 0.2;
+
+        this.slashMesh.position.set(0.15, 0.95, 0.9);
+        this.slashMesh.rotation.set(Math.PI / 2.6, -0.25, -0.8 + ease * 0.9);
+        this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 0.95;
+
+      } else {
+        // 【3段目: 左から右への豪快な水平一文字大薙ぎ払いフィニッシュ！】
+        // 左腰から右方向へ180度以上力強く水平に振り抜く
+        this.rightArmPivot.rotation.x = 0.15 - ease * 0.1;  // 水平維持
+        this.rightArmPivot.rotation.y = -1.6 + ease * 3.2;  // -1.6 -> +1.6 (左から右へ大回転)
+        this.rightArmPivot.rotation.z = 0.2 - ease * 0.4;
+
+        this.body.rotation.y = -0.6 + ease * 1.3; // 体全体で大回転薙ぎ払い
+
+        // 巨大な水平斬撃リング
+        this.slashMesh.position.set(0, 1.1, 0.95);
+        this.slashMesh.rotation.set(Math.PI / 2, 0, -Math.PI * 0.5 + ease * Math.PI * 1.1);
+        this.slashMesh.material.opacity = Math.sin(progress * Math.PI) * 1.0;
+      }
     } else {
       state.isAttacking = false;
       this.slashMesh.material.opacity = 0;
       this.rightArmPivot.rotation.set(0, 0, 0);
+      this.body.rotation.set(0, 0, 0);
     }
   }
 
   performAttackHitCheck() {
+    const activeCombo = (this.comboStep + 2) % 3;
     const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
     const pPos = this.group.position;
     let hitAny = false;
+
+    // 3段目フィニッシャーは射程と攻撃角度が大幅に拡大！
+    const attackRange = (activeCombo === 2) ? 3.4 : CONFIG.attackRange;
+    const attackAngle = (activeCombo === 2) ? Math.PI * 0.95 : CONFIG.attackAngle;
 
     zombieManager.zombies.forEach((zombie) => {
       if (zombie.isDead || zombie.isDying) return;
@@ -1896,29 +1969,29 @@ class Player {
       toZombie.y = 0;
       const dist = toZombie.length();
 
-      if (dist <= CONFIG.attackRange) {
+      if (dist <= attackRange) {
         toZombie.normalize();
         const dot = forward.dot(toZombie);
-        const minDot = Math.cos(CONFIG.attackAngle / 2);
+        const minDot = Math.cos(attackAngle / 2);
 
         if (dot >= minDot) {
           hitAny = true;
-          zombie.die(toZombie);
+          // 3段目は吹き飛び力が特大
+          zombie.die(toZombie, activeCombo === 2);
         }
       }
     });
 
     if (hitAny) {
-      // 迫力のズバッ！サウンド & ヒットストップ
-      soundManager.playZubattoSlash();
-      state.hitStopTimer = 0.055;
-      cameraController.shake(0.25);
+      soundManager.playZubattoSlash(activeCombo);
+      state.hitStopTimer = (activeCombo === 2) ? 0.08 : 0.055;
+      cameraController.shake(activeCombo === 2 ? 0.38 : 0.22);
     }
   }
 }
 
 // =============================================================================
-// 9. ゾンビ（アンデッド）システム (断末魔・吹き飛び崩壊死亡アクション)
+// 9. ゾンビ（アンデッド）システム
 // =============================================================================
 class Zombie {
   constructor() {
@@ -2106,15 +2179,12 @@ class Zombie {
     }
   }
 
-  // 断末魔の吹き飛び・崩壊モーション
   updateDying(delta) {
     this.dyingTimer += delta;
 
-    // 吹き飛び物理
-    this.knockbackVelocity.y -= 14.0 * delta; // 重力
+    this.knockbackVelocity.y -= 14.0 * delta;
     this.group.position.addScaledVector(this.knockbackVelocity, delta);
 
-    // 地面への激突
     if (this.group.position.y <= 0) {
       this.group.position.y = 0;
       this.knockbackVelocity.x *= 0.5;
@@ -2122,16 +2192,13 @@ class Zombie {
       this.knockbackVelocity.y = 0;
     }
 
-    // のけぞり回転
     this.group.rotation.x += this.angularVelocity.x * delta;
     this.group.rotation.z += this.angularVelocity.z * delta;
 
-    // 断末魔の痙攣 & ソウル煙エフェクト
     if (this.dyingTimer > 0.3 && Math.random() > 0.6) {
       particleSystem.spawnSoulSmoke(this.group.position);
     }
 
-    // 縮小フェードアウト
     if (this.dyingTimer > 0.7) {
       const fadeProgress = (this.dyingTimer - 0.7) / (this.maxDyingDuration - 0.7);
       const scale = Math.max(1.0 - fadeProgress, 0.01);
@@ -2144,36 +2211,31 @@ class Zombie {
     }
   }
 
-  die(hitDir) {
+  die(hitDir, isFinisher = false) {
     if (this.isDying || this.isDead) return;
 
     this.isDying = true;
     this.dyingTimer = 0;
 
-    // ゾンビの断末魔の叫び！
     soundManager.playZombieDeathScream();
 
-    // 勢いよく吹き飛ぶノックバックベクトル
-    const blowForce = 7.5 + Math.random() * 2.5;
+    const blowForce = isFinisher ? (11.0 + Math.random() * 3.0) : (7.5 + Math.random() * 2.5);
     this.knockbackVelocity.set(
       hitDir.x * blowForce,
-      4.5 + Math.random() * 2.0,
+      isFinisher ? 6.0 : (4.5 + Math.random() * 2.0),
       hitDir.z * blowForce
     );
 
-    // 吹き飛ぶ回転角
     this.angularVelocity.set(
-      (Math.random() - 0.5) * 8.0,
+      (Math.random() - 0.5) * (isFinisher ? 12.0 : 8.0),
       0,
-      (Math.random() - 0.5) * 8.0
+      (Math.random() - 0.5) * (isFinisher ? 12.0 : 8.0)
     );
 
-    // のけぞり姿勢
     this.head.rotation.x = -0.6;
     this.leftArm.rotation.x = -0.8;
     this.rightArm.rotation.x = -0.8;
 
-    // 激しい斬撃スパークと破片
     particleSystem.spawnDeathParticles(this.group.position, hitDir);
     particleSystem.spawnSlashSparks(this.group.position);
 
@@ -2182,7 +2244,7 @@ class Zombie {
     saveData.coins = state.coins;
     SaveManager.save(saveData);
 
-    updateHUD(this.group.position, true); // trueで爽快なSLASH!!表示
+    updateHUD(this.group.position, isFinisher ? 'FINISH' : true);
   }
 }
 
@@ -2226,7 +2288,7 @@ class ZombieManager {
 }
 
 // =============================================================================
-// 10. パーティクルシステム (スラッシュスパーク・ソウル煙・破片)
+// 10. パーティクルシステム
 // =============================================================================
 class ParticleSystem {
   constructor() {
@@ -2267,7 +2329,6 @@ class ParticleSystem {
     }
   }
 
-  // ズバッ！と飛び散る強烈な斬撃スパーク
   spawnSlashSparks(pos) {
     const count = 14;
     const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending });
@@ -2295,7 +2356,6 @@ class ParticleSystem {
     }
   }
 
-  // 昇天するソウル煙
   spawnSoulSmoke(pos) {
     const smokeMat = new THREE.MeshBasicMaterial({
       color: Math.random() > 0.5 ? 0xa855f7 : 0x475569,
@@ -3151,7 +3211,7 @@ function setupControls(player) {
   });
 }
 
-function updateHUD(worldPos, isSlash = false) {
+function updateHUD(worldPos, statusType = false) {
   const killEl = document.getElementById('kill-count');
   const coinEl = document.getElementById('coin-count');
   const shopCoinEl = document.getElementById('shop-coin-display');
@@ -3184,14 +3244,23 @@ function updateHUD(worldPos, isSlash = false) {
 
     const popup = document.createElement('div');
     popup.className = 'coin-popup';
-    popup.innerText = isSlash ? '⚔️ SLASH! +10🪙' : '+10 COINS';
-    popup.style.left = `${x}px`;
-    popup.style.top = `${y}px`;
-    if (isSlash) {
+
+    if (statusType === 'FINISH') {
+      popup.innerText = '💥 FINISH!! +10🪙';
+      popup.style.color = '#fde047';
+      popup.style.textShadow = '0 0 16px #ef4444, 0 0 32px #f97316';
+      popup.style.transform = 'scale(1.4)';
+    } else if (statusType === true) {
+      popup.innerText = '⚔️ SLASH! +10🪙';
       popup.style.color = '#fef08a';
       popup.style.textShadow = '0 0 12px #ef4444, 0 0 24px #f59e0b';
       popup.style.transform = 'scale(1.2)';
+    } else {
+      popup.innerText = '+10 COINS';
     }
+
+    popup.style.left = `${x}px`;
+    popup.style.top = `${y}px`;
     document.getElementById('ui-layer').appendChild(popup);
 
     setTimeout(() => popup.remove(), 900);
@@ -3605,11 +3674,10 @@ function animate() {
 
   const rawDelta = Math.min(clock.getDelta(), 0.1);
 
-  // ヒットストップ処理 (敵を斬った瞬間に一瞬ゲーム内時間が極微停止)
   let delta = rawDelta;
   if (state.hitStopTimer > 0) {
     state.hitStopTimer -= rawDelta;
-    delta = rawDelta * 0.08; // ほぼ停止
+    delta = rawDelta * 0.08;
   }
 
   updateDungeonEnvironment(rawDelta);
