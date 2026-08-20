@@ -1,0 +1,32 @@
+{
+  "name": "Blade & Buddy - 3D Action",
+  "short_name": "Blade&Buddy",
+  "description": "3D Action Prototype with Pet Buddy, Zombie Slicing & Cyber Shop Customization",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "theme_color": "#0a0c16",
+  "background_color": "#0a0c16",
+  "categories": ["games", "action"],
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
