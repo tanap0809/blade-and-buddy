@@ -383,32 +383,163 @@ class SoundManager {
     osc.stop(this.ctx.currentTime + 0.15);
   }
 
+  // 敵の命中時の「ザシュ！」インパクト音 (3層構造 - 風切り+切断+辺高討隙)
   playZubattoSlash(comboStep = 0) {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     const isFinisher = (comboStep === 2);
+    const dur = isFinisher ? 0.32 : 0.22;
 
-    const bufferSize = this.ctx.sampleRate * (isFinisher ? 0.24 : 0.18);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    // === 層 1: 高周波ノイズ (騒烈な風切り音) ===
+    const bufferSz = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, bufferSz, this.ctx.sampleRate);
+    const bData = buf.getChannelData(0);
+    for (let i = 0; i < bufferSz; i++) bData[i] = Math.random() * 2 - 1;
+    const noiseNode = this.ctx.createBufferSource();
+    noiseNode.buffer = buf;
 
-    const noiseFilter = this.ctx.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.setValueAtTime(isFinisher ? 3800 : 3200, now);
-    noiseFilter.frequency.exponentialRampToValueAtTime(isFinisher ? 250 : 400, now + 0.18);
+    const hiFilter = this.ctx.createBiquadFilter();
+    hiFilter.type = 'bandpass';
+    hiFilter.frequency.setValueAtTime(isFinisher ? 5500 : 4200, now);
+    hiFilter.frequency.exponentialRampToValueAtTime(isFinisher ? 300 : 500, now + dur * 0.8);
+    hiFilter.Q.setValueAtTime(isFinisher ? 1.8 : 1.2, now);
 
     const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(isFinisher ? 1.1 : 0.9, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+    noiseGain.gain.setValueAtTime(isFinisher ? 1.6 : 1.2, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + dur);
 
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
+    noiseNode.connect(hiFilter);
+    hiFilter.connect(noiseGain);
     noiseGain.connect(this.sfxGain);
-    noise.start(now);
-    noise.stop(now + 0.19);
+    noiseNode.start(now);
+    noiseNode.stop(now + dur + 0.01);
+
+    // === 層 2: 中域ノイズ (肉切り感) ===
+    const midBuf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * 0.12), this.ctx.sampleRate);
+    const midData = midBuf.getChannelData(0);
+    for (let i = 0; i < midData.length; i++) midData[i] = Math.random() * 2 - 1;
+    const midNoise = this.ctx.createBufferSource();
+    midNoise.buffer = midBuf;
+
+    const midFilter = this.ctx.createBiquadFilter();
+    midFilter.type = 'bandpass';
+    midFilter.frequency.setValueAtTime(1800, now);
+    midFilter.frequency.exponentialRampToValueAtTime(200, now + 0.12);
+
+    const midGain = this.ctx.createGain();
+    midGain.gain.setValueAtTime(isFinisher ? 0.9 : 0.6, now);
+    midGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+    midNoise.connect(midFilter);
+    midFilter.connect(midGain);
+    midGain.connect(this.sfxGain);
+    midNoise.start(now);
+    midNoise.stop(now + 0.13);
+
+    // === 層 3: 低音トンプ (農身) - フィニッシャーのみ ===
+    if (isFinisher) {
+      const osc = this.ctx.createOscillator();
+      const oscGain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(95, now);
+      osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+      oscGain.gain.setValueAtTime(0.7, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+      osc.connect(oscGain);
+      oscGain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    }
+  }
+
+  // 剪を振る時の声 (「えい！」「やぁ！」「とお！」) - formantフィルターで人声風
+  playVoice(comboStep = 0) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // 各コンボステップの声のパラメータ (formant周波数, ピッチ変化)
+    // comboStep 0 = 「えい！」: F1=700Hz, F2=1200Hz, 上昇コンター
+    // comboStep 1 = 「やぁ！」: F1=800Hz, F2=1100Hz, 高たかい
+    // comboStep 2 = 「とお！」: F1=450Hz, F2=900Hz, 低く連打ち
+    const voiceParams = [
+      { baseFreq: 240, endFreq: 190, f1: 700, f2: 1200, dur: 0.22, vol: 0.55 },  // 「えい！」
+      { baseFreq: 290, endFreq: 180, f1: 820, f2: 1050, dur: 0.20, vol: 0.60 },  // 「やぁ！」
+      { baseFreq: 210, endFreq: 140, f1: 480, f2: 850,  dur: 0.28, vol: 0.65 },  // 「とお！」
+    ];
+    const vp = voiceParams[comboStep];
+
+    // 基本波形 (声帯振動 = saw + トレモロ)
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(vp.baseFreq, now);
+    osc.frequency.linearRampToValueAtTime(vp.baseFreq * 1.18, now + 0.04);   // 失導上昇
+    osc.frequency.exponentialRampToValueAtTime(vp.endFreq, now + vp.dur);     // ピッチ襄下
+
+    // 第1フォルマント (F1 - 元音障頼)
+    const f1 = this.ctx.createBiquadFilter();
+    f1.type = 'bandpass';
+    f1.frequency.setValueAtTime(vp.f1, now);
+    f1.Q.setValueAtTime(8, now);
+
+    // 第2フォルマント (F2 - 母音識別)
+    const f2 = this.ctx.createBiquadFilter();
+    f2.type = 'bandpass';
+    f2.frequency.setValueAtTime(vp.f2, now);
+    f2.Q.setValueAtTime(10, now);
+
+    // ハイパス (気息色)
+    const hpf = this.ctx.createBiquadFilter();
+    hpf.type = 'highpass';
+    hpf.frequency.setValueAtTime(120, now);
+
+    const masterGain = this.ctx.createGain();
+    // 短いアタック + 渡り + リリース
+    masterGain.gain.setValueAtTime(0.0, now);
+    masterGain.gain.linearRampToValueAtTime(vp.vol, now + 0.015);
+    masterGain.gain.setValueAtTime(vp.vol, now + vp.dur * 0.5);
+    masterGain.gain.exponentialRampToValueAtTime(0.01, now + vp.dur);
+
+    // F1, F2 並列接続
+    osc.connect(hpf);
+    hpf.connect(f1);
+    hpf.connect(f2);
+    f1.connect(masterGain);
+    f2.connect(masterGain);
+    masterGain.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + vp.dur + 0.02);
+
+    // 読み上げ的な第2オシレーター (軽い背景声帯)
+    const osc2 = this.ctx.createOscillator();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(vp.baseFreq * 0.5, now);
+    osc2.frequency.exponentialRampToValueAtTime(vp.endFreq * 0.5, now + vp.dur);
+    const g2 = this.ctx.createGain();
+    g2.gain.setValueAtTime(vp.vol * 0.25, now);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + vp.dur);
+    osc2.connect(g2);
+    g2.connect(this.sfxGain);
+    osc2.start(now);
+    osc2.stop(now + vp.dur + 0.02);
+  }
+
+  // 敵命中時の辺高討隘音 (ザシュ！に挿さる短いパンチ)
+  playHitImpact(isFinisher = false) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // 短い低音トンプ (punch-like body blow)
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(isFinisher ? 75 : 55, now);
+    osc.frequency.exponentialRampToValueAtTime(20, now + 0.09);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(isFinisher ? 1.0 : 0.7, now);
+    g.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+    osc.connect(g);
+    g.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.10);
   }
 
   playMagicSound(element, tier = 1) {
@@ -1415,7 +1546,11 @@ class Player {
     if (!state.canAttack || state.isAttacking || state.mode !== GAME_MODE.PLAYING) return;
 
     soundManager.unlock();
+
+    // 剣を振る「シュッ」音
     soundManager.playAttackSlash(this.comboStep);
+    // 剣を振る声 (えい!/やぁ!/とお!)
+    soundManager.playVoice(this.comboStep);
 
     state.isAttacking = true;
     state.canAttack = false;
@@ -1494,7 +1629,9 @@ class Player {
     });
 
     if (hitAny) {
+      // 敵命中時: ザシュ！衝撃音 + ヒットスプラッシュ
       soundManager.playZubattoSlash(activeCombo);
+      soundManager.playHitImpact(activeCombo === 2);
       state.hitStopTimer = (activeCombo === 2) ? 0.08 : 0.05;
       cameraController.shake(activeCombo === 2 ? 0.35 : 0.2);
     }
