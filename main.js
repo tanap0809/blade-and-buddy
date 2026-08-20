@@ -1,6 +1,6 @@
 /**
  * Blade & Buddy - 3D Action Game Prototype
- * Three.js (CDN) + GLTFLoader + iPad Safari Touch Controls + Cyber Shop & Multi-Pet Team System
+ * Three.js (CDN) + GLTFLoader + iPad Safari Touch Controls + Cyber Shop & Multi-Pet Team System + Dynamic Web Audio & Cyber City Stage
  */
 
 // =============================================================================
@@ -11,26 +11,22 @@ const CONFIG = {
   playerTurnSpeed: 14.0,
   zombieSpeed: 2.2,
   zombieMaxCount: 15,
-  spawnInterval: 2.2, // 秒
-  attackCooldown: 0.35, // 攻撃クールダウン
+  spawnInterval: 2.2,
+  attackCooldown: 0.35,
   attackRange: 2.8,
-  attackAngle: Math.PI * 0.65, // 前方約117度
+  attackAngle: Math.PI * 0.65,
   cameraOffset: new THREE.Vector3(0, 5.2, -6.5),
   cameraLookOffset: new THREE.Vector3(0, 1.2, 2.0),
   cameraLerp: 0.1,
-  // ペット基本設定 (3体フォーメーション用オフセット)
   petOffsets: [
     new THREE.Vector3(-1.4, 1.8, -1.2), // 1体目: 左後方
     new THREE.Vector3(1.4, 1.8, -1.2),  // 2体目: 右後方
     new THREE.Vector3(0.0, 2.4, -1.8),  // 3体目: 真後方・高め
   ],
   petFollowSpeed: 6.0,
-  petAttackRange: 12.0,   // 索敵射程
+  petAttackRange: 12.0,
 };
 
-// =============================================================================
-// 1.5 外部3Dモデル設定 (GLTF / GLB)
-// =============================================================================
 const MODEL_CONFIG = {
   player: {
     url: '',
@@ -73,7 +69,373 @@ const state = {
 };
 
 // =============================================================================
-// 2. ショップアイテム定義 (衣装・頭装備・刀・ペット7種)
+// 1.8 Web Audio API 動的シンセBGM & SEエンジン
+// =============================================================================
+class SoundManager {
+  constructor() {
+    this.ctx = null;
+    this.isMuted = false;
+    this.isPlayingBGM = false;
+    this.bgmGain = null;
+    this.sfxGain = null;
+    this.masterGain = null;
+    this.tempo = 132; // BPM
+    this.step = 0;
+    this.nextNoteTime = 0;
+    this.timerId = null;
+  }
+
+  init() {
+    if (this.ctx) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    this.ctx = new AudioCtx();
+
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+    this.masterGain.connect(this.ctx.destination);
+
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+    this.bgmGain.connect(this.masterGain);
+
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.setValueAtTime(0.6, this.ctx.currentTime);
+    this.sfxGain.connect(this.masterGain);
+  }
+
+  unlock() {
+    if (!this.ctx) this.init();
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+    if (!this.isPlayingBGM && !this.isMuted) {
+      this.startBGM();
+    }
+  }
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 0.7, this.ctx.currentTime);
+    }
+    const btn = document.getElementById('btn-toggle-sound');
+    const text = document.getElementById('sound-status-text');
+    const icon = document.getElementById('sound-icon');
+    if (btn) btn.classList.toggle('is-muted', this.isMuted);
+    if (text) text.innerText = this.isMuted ? 'MUTE' : 'BGM ON';
+    if (icon) icon.innerText = this.isMuted ? '🔇' : '🎵';
+
+    if (!this.isMuted) this.unlock();
+  }
+
+  // BGMスケジューラー
+  startBGM() {
+    if (this.isPlayingBGM || !this.ctx) return;
+    this.isPlayingBGM = true;
+    this.nextNoteTime = this.ctx.currentTime + 0.05;
+    this.step = 0;
+    this.scheduler();
+  }
+
+  scheduler() {
+    if (!this.isPlayingBGM) return;
+    while (this.nextNoteTime < this.ctx.currentTime + 0.15) {
+      this.playStep(this.step, this.nextNoteTime);
+      const secondsPerBeat = 60.0 / this.tempo;
+      const secondsPer16th = secondsPerBeat / 4.0;
+      this.nextNoteTime += secondsPer16th;
+      this.step = (this.step + 1) % 64; // 4小節（64ステップ）ループ
+    }
+    this.timerId = setTimeout(() => this.scheduler(), 35);
+  }
+
+  playStep(step, time) {
+    if (!this.ctx || this.isMuted) return;
+
+    const beatInBar = step % 16;
+    const bar = Math.floor(step / 16);
+
+    // 1. ドラムトラック
+    // キック (1拍目, 5拍目, 9拍目, 13拍目)
+    if (beatInBar === 0 || beatInBar === 8 || (bar % 2 === 1 && (beatInBar === 6 || beatInBar === 14))) {
+      this.synthKick(time);
+    }
+    // スネア (5拍目, 13拍目 = 2拍・4拍目)
+    if (beatInBar === 4 || beatInBar === 12) {
+      this.synthSnare(time);
+    }
+    // ハイハット (偶数ステップ)
+    if (beatInBar % 2 === 0) {
+      this.synthHihat(time, beatInBar % 4 === 2 ? 0.35 : 0.18);
+    }
+
+    // 2. シンセベーストラック (エネルギッシュなサイバーベースライン)
+    const baseNotes = [
+      // Bar 0: D (73.42 Hz)
+      73.42, 73.42, 146.83, 73.42, 73.42, 73.42, 110.0, 73.42,
+      73.42, 73.42, 146.83, 73.42, 82.41, 98.0, 110.0, 130.81,
+      // Bar 1: F (87.31 Hz)
+      87.31, 87.31, 174.61, 87.31, 87.31, 87.31, 130.81, 87.31,
+      87.31, 87.31, 174.61, 87.31, 98.0, 110.0, 130.81, 146.83,
+      // Bar 2: G (98.00 Hz)
+      98.0, 98.0, 196.0, 98.0, 98.0, 98.0, 146.83, 98.0,
+      98.0, 98.0, 196.0, 98.0, 110.0, 130.81, 146.83, 164.81,
+      // Bar 3: A -> C (110.0 -> 130.81 Hz)
+      110.0, 110.0, 220.0, 110.0, 110.0, 110.0, 164.81, 110.0,
+      130.81, 130.81, 261.63, 130.81, 146.83, 164.81, 196.0, 220.0,
+    ];
+    const bassFreq = baseNotes[step];
+    if (bassFreq) {
+      this.synthBass(bassFreq, time, 0.12);
+    }
+
+    // 3. リードメロディ / アルペジオトラック
+    const melodyScale = [293.66, 329.63, 349.23, 440.0, 523.25, 587.33, 659.25, 698.46, 880.0];
+    const arpeggioPattern = [0, 2, 4, 7, 5, 4, 2, 4, 1, 3, 5, 8, 6, 5, 3, 5];
+    const noteIdx = arpeggioPattern[beatInBar];
+    const melodyFreq = melodyScale[noteIdx % melodyScale.length];
+
+    if (step % 2 === 0 && melodyFreq) {
+      this.synthLead(melodyFreq, time, 0.08);
+    }
+  }
+
+  // --- 音源合成メソッド ---
+  synthKick(time) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, time);
+    osc.frequency.exponentialRampToValueAtTime(32, time + 0.12);
+    gain.gain.setValueAtTime(0.8, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+    osc.connect(gain);
+    gain.connect(this.bgmGain);
+    osc.start(time);
+    osc.stop(time + 0.13);
+  }
+
+  synthSnare(time) {
+    // ノイズバースト
+    const bufferSize = this.ctx.sampleRate * 0.1;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(1000, time);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.45, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bgmGain);
+    noise.start(time);
+    noise.stop(time + 0.1);
+  }
+
+  synthHihat(time, vol = 0.2) {
+    const bufferSize = this.ctx.sampleRate * 0.04;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(6500, time);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(vol, time);
+    gain.gain.exponentialRampToValueAtTime(0.005, time + 0.035);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bgmGain);
+    noise.start(time);
+    noise.stop(time + 0.04);
+  }
+
+  synthBass(freq, time, dur = 0.12) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, time);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(800, time);
+    filter.frequency.exponentialRampToValueAtTime(200, time + dur);
+
+    gain.gain.setValueAtTime(0.35, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + dur);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.bgmGain);
+    osc.start(time);
+    osc.stop(time + dur);
+  }
+
+  synthLead(freq, time, dur = 0.08) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, time);
+
+    gain.gain.setValueAtTime(0.12, time);
+    gain.gain.exponentialRampToValueAtTime(0.005, time + dur);
+
+    osc.connect(gain);
+    gain.connect(this.bgmGain);
+    osc.start(time);
+    osc.stop(time + dur);
+  }
+
+  // --- アクション効果音 (SE) ---
+  playAttackSlash() {
+    if (!this.ctx || this.isMuted) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, this.ctx.currentTime);
+
+    gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.16);
+  }
+
+  playHit() {
+    if (!this.ctx || this.isMuted) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.18);
+
+    gain.gain.setValueAtTime(0.6, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.19);
+  }
+
+  playCoin() {
+    if (!this.ctx || this.isMuted) return;
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+    osc1.frequency.setValueAtTime(1318.51, this.ctx.currentTime); // E6
+    osc2.frequency.setValueAtTime(1975.53, this.ctx.currentTime + 0.07); // B6
+
+    gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc1.start(this.ctx.currentTime);
+    osc1.stop(this.ctx.currentTime + 0.08);
+    osc2.start(this.ctx.currentTime + 0.07);
+    osc2.stop(this.ctx.currentTime + 0.25);
+  }
+
+  playShoot(type) {
+    if (!this.ctx || this.isMuted) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    if (type === 'laser') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1400, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.1);
+    } else if (type === 'fireball') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(90, this.ctx.currentTime + 0.18);
+    } else if (type === 'rock') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(45, this.ctx.currentTime + 0.2);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(440, this.ctx.currentTime + 0.12);
+    }
+
+    gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.2);
+  }
+
+  playBuy() {
+    if (!this.ctx || this.isMuted) return;
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C(hi)
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.06);
+      gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.06 + 0.12);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(this.ctx.currentTime + idx * 0.06);
+      osc.stop(this.ctx.currentTime + idx * 0.06 + 0.14);
+    });
+  }
+
+  playEquip() {
+    if (!this.ctx || this.isMuted) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+    osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.05);
+    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.13);
+  }
+}
+
+const soundManager = new SoundManager();
+
+// =============================================================================
+// 2. ショップアイテム定義
 // =============================================================================
 const ITEMS_DATA = {
   outfits: {
@@ -451,18 +813,18 @@ class ModelLoader {
 const modelLoader = new ModelLoader();
 
 // =============================================================================
-// 4. Three.js 基本セットアップ
+// 4. Three.js 基本セットアップ & 美麗フォグ
 // =============================================================================
 const container = document.getElementById('game-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0c16);
-scene.fog = new THREE.FogExp2(0x0a0c16, 0.035);
+scene.background = new THREE.Color(0x060814);
+scene.fog = new THREE.FogExp2(0x0a0f24, 0.022);
 
 const camera = new THREE.PerspectiveCamera(
   60,
   window.innerWidth / window.innerHeight,
   0.1,
-  100
+  180
 );
 camera.position.set(0, 6, -8);
 
@@ -476,21 +838,21 @@ container.appendChild(renderer.domElement);
 // =============================================================================
 // 5. ライティング
 // =============================================================================
-const ambientLight = new THREE.AmbientLight(0x334155, 1.2);
+const ambientLight = new THREE.AmbientLight(0x384c6c, 1.4);
 scene.add(ambientLight);
 
-const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.8);
-hemiLight.position.set(0, 20, 0);
+const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.9);
+hemiLight.position.set(0, 25, 0);
 scene.add(hemiLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-dirLight.position.set(12, 20, -10);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+dirLight.position.set(12, 22, -10);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.width = 1024;
 dirLight.shadow.mapSize.height = 1024;
 dirLight.shadow.camera.near = 0.5;
-dirLight.shadow.camera.far = 50;
-const d = 16;
+dirLight.shadow.camera.far = 60;
+const d = 18;
 dirLight.shadow.camera.left = -d;
 dirLight.shadow.camera.right = d;
 dirLight.shadow.camera.top = d;
@@ -499,53 +861,217 @@ dirLight.shadow.bias = -0.0005;
 scene.add(dirLight);
 
 // =============================================================================
-// 6. ステージ環境の構築
+// 6. リッチな3Dステージ環境 (サイバーシティ摩天楼・浮遊クリスタル・ネオンダスト)
 // =============================================================================
+const animatedEnvironmentObjects = {
+  crystals: [],
+  lightDustMesh: null,
+  dustPositions: null,
+  rings: [],
+};
+
 function createEnvironment() {
-  const floorGeo = new THREE.PlaneGeometry(80, 80);
+  // 1. 地面プレーン (サイバーヘキサゴンネイビー)
+  const floorGeo = new THREE.PlaneGeometry(90, 90);
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x111827,
-    roughness: 0.85,
-    metalness: 0.2,
+    color: 0x0b1120,
+    roughness: 0.7,
+    metalness: 0.3,
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
 
-  const gridHelper = new THREE.GridHelper(80, 40, 0x0284c7, 0x1e293b);
-  gridHelper.position.y = 0.01;
+  // 2. メインサイバーグリッド
+  const gridHelper = new THREE.GridHelper(90, 45, 0x0284c7, 0x1e293b);
+  gridHelper.position.y = 0.015;
   scene.add(gridHelper);
 
-  const pillarGeo = new THREE.BoxGeometry(1.2, 4, 1.2);
-  const pillarMat = new THREE.MeshStandardMaterial({
-    color: 0x1e293b,
-    roughness: 0.4,
-    metalness: 0.8,
-  });
-  const pillarGlowMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+  // 3. 中央のネオンリング & アリーナ境界リング
+  const arenaRingGeo = new THREE.RingGeometry(33.8, 34.2, 48);
+  const arenaRingMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide });
+  const arenaRing = new THREE.Mesh(arenaRingGeo, arenaRingMat);
+  arenaRing.rotation.x = -Math.PI / 2;
+  arenaRing.position.y = 0.02;
+  scene.add(arenaRing);
 
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2;
-    const radius = 35 + (Math.random() * 4 - 2);
+  const innerRingGeo = new THREE.RingGeometry(12.0, 12.3, 36);
+  const innerRingMat = new THREE.MeshBasicMaterial({ color: 0xf472b6, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+  const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
+  innerRing.rotation.x = -Math.PI / 2;
+  innerRing.position.y = 0.02;
+  scene.add(innerRing);
+  animatedEnvironmentObjects.rings.push(innerRing);
+
+  // 4. 外周の浮遊エネルギークリスタルタワー (8箇所)
+  const crystalGeo = new THREE.OctahedronGeometry(1.4, 0);
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.9,
+    roughness: 0.1,
+    metalness: 0.9,
+  });
+
+  const towerPillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
+  const towerGlowMat = new THREE.MeshBasicMaterial({ color: 0xf472b6 });
+
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const radius = 35;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
 
-    const pillarGroup = new THREE.Group();
-    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-    pillar.position.y = 2;
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
-    pillarGroup.add(pillar);
+    const towerGroup = new THREE.Group();
+    towerGroup.position.set(x, 0, z);
 
-    const glowRing = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.2, 1.25), pillarGlowMat);
-    glowRing.position.y = 3.2;
-    pillarGroup.add(glowRing);
+    // 台座
+    const basePillar = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.3, 3.2, 8), towerPillarMat);
+    basePillar.position.y = 1.6;
+    basePillar.castShadow = true;
+    basePillar.receiveShadow = true;
+    towerGroup.add(basePillar);
 
-    pillarGroup.position.set(x, 0, z);
-    scene.add(pillarGroup);
+    const baseRing = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.2, 8), towerGlowMat);
+    baseRing.position.y = 2.8;
+    towerGroup.add(baseRing);
+
+    // 浮遊クリスタル
+    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+    crystal.position.y = 4.6;
+    crystal.castShadow = true;
+    towerGroup.add(crystal);
+
+    animatedEnvironmentObjects.crystals.push({
+      mesh: crystal,
+      baseY: 4.6,
+      rotSpeed: 0.8 + Math.random() * 0.5,
+      phase: i * 0.8,
+    });
+
+    scene.add(towerGroup);
+  }
+
+  // 5. 遠景サイバーシティ摩天楼 (外周ビル群 45棟)
+  const buildingColors = [0x0f172a, 0x1e293b, 0x111827, 0x0c1222];
+  const windowGlowColors = [0x38bdf8, 0x818cf8, 0xf472b6, 0xfde047, 0x4ade80];
+
+  for (let i = 0; i < 48; i++) {
+    const angle = (i / 48) * Math.PI * 2 + (Math.random() * 0.08);
+    const distance = 46 + Math.random() * 24;
+    const x = Math.cos(angle) * distance;
+    const z = Math.sin(angle) * distance;
+
+    const bWidth = 4 + Math.random() * 5;
+    const bHeight = 16 + Math.random() * 32;
+    const bDepth = 4 + Math.random() * 5;
+
+    const bMat = new THREE.MeshStandardMaterial({
+      color: buildingColors[Math.floor(Math.random() * buildingColors.length)],
+      roughness: 0.6,
+      metalness: 0.7,
+    });
+
+    const building = new THREE.Mesh(new THREE.BoxGeometry(bWidth, bHeight, bDepth), bMat);
+    building.position.set(x, bHeight / 2, z);
+    scene.add(building);
+
+    // ビルの窓の光ストライプ
+    const winCount = 3 + Math.floor(Math.random() * 4);
+    for (let w = 0; w < winCount; w++) {
+      const winGeo = new THREE.BoxGeometry(bWidth * 0.85, 0.35, bDepth * 0.85);
+      const winMat = new THREE.MeshBasicMaterial({
+        color: windowGlowColors[Math.floor(Math.random() * windowGlowColors.length)],
+      });
+      const win = new THREE.Mesh(winGeo, winMat);
+      win.position.set(x, (bHeight * (w + 1)) / (winCount + 1.5), z);
+      scene.add(win);
+    }
+
+    // 屋上アンテナビーコン
+    if (Math.random() > 0.4) {
+      const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.5, 4), towerPillarMat);
+      antenna.position.set(x, bHeight + 1.75, z);
+      scene.add(antenna);
+
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+      beacon.position.set(x, bHeight + 3.5, z);
+      scene.add(beacon);
+    }
+  }
+
+  // 6. 空間に舞う浮遊ネオンダスト (Ambient Cyber Motes)
+  const dustCount = 100;
+  const dustGeo = new THREE.BufferGeometry();
+  const dustPositions = new Float32Array(dustCount * 3);
+  const dustColors = new Float32Array(dustCount * 3);
+
+  const dustPalette = [
+    new THREE.Color(0x38bdf8), // シアン
+    new THREE.Color(0xf472b6), // ピンク
+    new THREE.Color(0xfde047), // ゴールド
+  ];
+
+  for (let i = 0; i < dustCount; i++) {
+    dustPositions[i * 3] = (Math.random() - 0.5) * 70;
+    dustPositions[i * 3 + 1] = Math.random() * 12 + 0.5;
+    dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 70;
+
+    const col = dustPalette[Math.floor(Math.random() * dustPalette.length)];
+    dustColors[i * 3] = col.r;
+    dustColors[i * 3 + 1] = col.g;
+    dustColors[i * 3 + 2] = col.b;
+  }
+
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+  dustGeo.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
+
+  const dustMat = new THREE.PointsMaterial({
+    size: 0.35,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+  });
+
+  const dustPoints = new THREE.Points(dustGeo, dustMat);
+  scene.add(dustPoints);
+
+  animatedEnvironmentObjects.lightDustMesh = dustPoints;
+  animatedEnvironmentObjects.dustPositions = dustPositions;
+}
+
+function updateEnvironment(delta) {
+  // クリスタルの浮遊回転
+  animatedEnvironmentObjects.crystals.forEach((c) => {
+    c.mesh.rotation.y += delta * c.rotSpeed;
+    c.mesh.rotation.x = Math.sin(Date.now() * 0.0015 + c.phase) * 0.2;
+    c.mesh.position.y = c.baseY + Math.sin(Date.now() * 0.002 + c.phase) * 0.35;
+  });
+
+  // リング回転
+  animatedEnvironmentObjects.rings.forEach((r) => {
+    r.rotation.z += delta * 0.3;
+  });
+
+  // ネオンダストの上昇ゆらめき
+  if (animatedEnvironmentObjects.lightDustMesh && animatedEnvironmentObjects.dustPositions) {
+    const pos = animatedEnvironmentObjects.dustPositions;
+    for (let i = 0; i < pos.length / 3; i++) {
+      pos[i * 3 + 1] += delta * 0.6; // ゆっくり上昇
+      pos[i * 3] += Math.sin(Date.now() * 0.001 + i) * 0.02;
+
+      if (pos[i * 3 + 1] > 12.0) {
+        pos[i * 3 + 1] = 0.5;
+        pos[i * 3] = (Math.random() - 0.5) * 70;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 70;
+      }
+    }
+    animatedEnvironmentObjects.lightDustMesh.geometry.attributes.position.needsUpdate = true;
   }
 }
+
 createEnvironment();
 
 // =============================================================================
@@ -633,7 +1159,7 @@ class SwordParticleSystem {
 }
 
 // =============================================================================
-// 8. プレイヤーキャラクター生成 (操作感・方向修正対応)
+// 8. プレイヤーキャラクター生成
 // =============================================================================
 class Player {
   constructor() {
@@ -1018,7 +1544,6 @@ class Player {
   }
 
   update(delta) {
-    // 画面基準の入力値 (右=+1, 左=-1, 上/奥=+1, 下/手前=-1)
     let screenX = state.moveVector.x;
     let screenZ = state.moveVector.y;
 
@@ -1031,17 +1556,17 @@ class Player {
     this.isMoving = inputLen > 0.05;
 
     if (this.isMoving) {
+      soundManager.unlock();
       const normScreenX = screenX / (inputLen > 1 ? inputLen : 1);
       const normScreenZ = screenZ / (inputLen > 1 ? inputLen : 1);
 
-      // カメラが-Zから+Zを見ているため、画面右(+screenX)は3Dワールドの-Xに対応
+      // カメラ視点に合わせた方向変換 (画面右は-X)
       const worldX = -normScreenX;
       const worldZ = normScreenZ;
 
       this.velocity.x = worldX * CONFIG.playerSpeed;
       this.velocity.z = worldZ * CONFIG.playerSpeed;
 
-      // 進行方向へのスムーズな回転
       this.targetRotation = Math.atan2(worldX, worldZ);
       let diff = this.targetRotation - this.group.rotation.y;
       while (diff < -Math.PI) diff += Math.PI * 2;
@@ -1103,6 +1628,9 @@ class Player {
 
   attack() {
     if (!state.canAttack || state.isAttacking || state.isPaused) return;
+
+    soundManager.unlock();
+    soundManager.playAttackSlash();
 
     state.isAttacking = true;
     state.canAttack = false;
@@ -1304,6 +1832,7 @@ class Zombie {
     this.isDead = true;
     scene.remove(this.group);
 
+    soundManager.playHit();
     particleSystem.spawnDeathParticles(this.group.position, hitDir);
 
     state.kills++;
@@ -1625,6 +2154,7 @@ class ProjectileManager {
   }
 
   shoot(startPos, targetZombie, bulletType, speed) {
+    soundManager.playShoot(bulletType);
     const proj = new MagicProjectile(startPos, targetZombie, bulletType, speed);
     this.projectiles.push(proj);
   }
@@ -2101,6 +2631,18 @@ function setupControls(player) {
   const joystickZone = document.getElementById('joystick-zone');
   const joystickKnob = document.getElementById('joystick-knob');
   const attackBtn = document.getElementById('btn-attack');
+  const soundBtn = document.getElementById('btn-toggle-sound');
+
+  if (soundBtn) {
+    soundBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      soundManager.toggleMute();
+    });
+  }
+
+  // 画面の初回タップ/クリックでWeb Audioアンロック
+  window.addEventListener('pointerdown', () => soundManager.unlock(), { once: true });
+  window.addEventListener('keydown', () => soundManager.unlock(), { once: true });
 
   let touchId = null;
   let center = { x: 0, y: 0 };
@@ -2108,6 +2650,7 @@ function setupControls(player) {
 
   function onJoystickStart(clientX, clientY, identifier) {
     if (state.isPaused) return;
+    soundManager.unlock();
     touchId = identifier;
     const rect = joystickZone.getBoundingClientRect();
     center = {
@@ -2130,7 +2673,6 @@ function setupControls(player) {
 
     joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
 
-    // 画面上の右(+X)と上(+Y)に正規化
     state.moveVector.x = knobX / maxRadius;
     state.moveVector.y = -knobY / maxRadius;
   }
@@ -2173,6 +2715,7 @@ function setupControls(player) {
 
   window.addEventListener('keydown', (e) => {
     if (state.isPaused) return;
+    soundManager.unlock();
     switch (e.code) {
       case 'KeyW':
       case 'ArrowUp':
@@ -2245,6 +2788,7 @@ function updateHUD(worldPos) {
   }, 150);
 
   if (worldPos) {
+    soundManager.playCoin();
     const screenPos = worldPos.clone().project(camera);
     const x = ((screenPos.x + 1) * window.innerWidth) / 2;
     const y = ((-screenPos.y + 1) * window.innerHeight) / 2;
@@ -2261,7 +2805,7 @@ function updateHUD(worldPos) {
 }
 
 // =============================================================================
-// 14. ショップ & 着せ替えUIコントローラー (ペットタブ対応)
+// 14. ショップ & 着せ替えUIコントローラー
 // =============================================================================
 class ShopUI {
   constructor(player, petManager) {
@@ -2282,6 +2826,7 @@ class ShopUI {
   bindEvents() {
     this.openBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      soundManager.unlock();
       this.open();
     });
 
@@ -2298,6 +2843,7 @@ class ShopUI {
     this.tabs.forEach((tab) => {
       tab.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        soundManager.unlock();
         const targetTab = tab.dataset.tab;
         if (this.currentTab !== targetTab) {
           this.currentTab = targetTab;
@@ -2537,6 +3083,7 @@ class ShopUI {
       return;
     }
 
+    soundManager.playBuy();
     state.coins -= item.price;
     saveData.coins = state.coins;
 
@@ -2557,6 +3104,7 @@ class ShopUI {
   equipPet(petId) {
     if (saveData.equipped.pets.length >= 3 || saveData.equipped.pets.includes(petId)) return;
 
+    soundManager.playEquip();
     saveData.equipped.pets.push(petId);
     this.petManager.rebuild(saveData.equipped.pets);
     SaveManager.save(saveData);
@@ -2567,6 +3115,7 @@ class ShopUI {
   unequipPet(petId) {
     if (saveData.equipped.pets.length <= 1) return;
 
+    soundManager.playEquip();
     saveData.equipped.pets = saveData.equipped.pets.filter(id => id !== petId);
     this.petManager.rebuild(saveData.equipped.pets);
     SaveManager.save(saveData);
@@ -2581,6 +3130,7 @@ class ShopUI {
       return;
     }
 
+    soundManager.playBuy();
     state.coins -= item.price;
     saveData.coins = state.coins;
 
@@ -2600,6 +3150,7 @@ class ShopUI {
   }
 
   equipItem(categoryKey, itemId) {
+    soundManager.playEquip();
     if (categoryKey === 'outfit') {
       saveData.equipped.outfit = itemId;
       this.player.applyOutfit(itemId);
@@ -2643,6 +3194,7 @@ const cameraController = new CameraController(camera, player);
 const shopUI = new ShopUI(player, petManager);
 
 window.player = player;
+window.soundManager = soundManager;
 window.loadPlayerModel = (url) => player.loadCustomModel(url);
 
 setupControls(player);
@@ -2658,6 +3210,9 @@ function animate() {
   requestAnimationFrame(animate);
 
   const delta = Math.min(clock.getDelta(), 0.1);
+
+  // 3D背景の環境アニメーション (クリスタル・リング・浮遊ダスト)
+  updateEnvironment(delta);
 
   if (!state.isPaused) {
     player.update(delta);
