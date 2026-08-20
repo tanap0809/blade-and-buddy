@@ -938,48 +938,242 @@ class Player {
   }
 
   buildMesh() {
-    this.heroMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4, metalness: 0.4 });
-    this.armorMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.3, metalness: 0.7 });
-    this.skinMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.6 });
+    // ====================================
+    // マテリアル定義 (プレミアムPBR)
+    // ====================================
+    const skinMat   = new THREE.MeshStandardMaterial({ color: 0xffcc88, roughness: 0.7, metalness: 0.0 });
+    const hairMat   = new THREE.MeshStandardMaterial({ color: 0x1c1008, roughness: 0.9, metalness: 0.0 });
+    const armorMat  = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.25, metalness: 0.85 });
+    const cloakMat  = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.8, metalness: 0.0 });
+    const beltMat   = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.6, metalness: 0.2 });
+    const bladeMat  = new THREE.MeshStandardMaterial({ color: 0xdbeafe, emissive: 0x2563eb, emissiveIntensity: 0.6, roughness: 0.05, metalness: 1.0 });
+    const guardMat  = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa7700, emissiveIntensity: 0.3, roughness: 0.3, metalness: 0.9 });
 
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.78, 0.42), this.heroMat);
-    this.body.position.y = 1.1;
-    this.body.castShadow = true;
+    // ====================================
+    // 足 (左右)
+    // ====================================
+    const legGeo = new THREE.BoxGeometry(0.22, 0.52, 0.22);
+    this.leftLeg = new THREE.Mesh(legGeo, armorMat);
+    this.leftLeg.position.set(-0.15, 0.26, 0);
+    this.leftLeg.castShadow = true;
+    this.group.add(this.leftLeg);
+
+    this.rightLeg = new THREE.Mesh(legGeo, armorMat);
+    this.rightLeg.position.set(0.15, 0.26, 0);
+    this.rightLeg.castShadow = true;
+    this.group.add(this.rightLeg);
+
+    // 靴 (左右)
+    const bootGeo = new THREE.BoxGeometry(0.24, 0.16, 0.32);
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x1c1008, roughness: 0.9 });
+    const leftBoot = new THREE.Mesh(bootGeo, bootMat);
+    leftBoot.position.set(0, -0.32, 0.06);
+    this.leftLeg.add(leftBoot);
+    const rightBoot = new THREE.Mesh(bootGeo, bootMat);
+    rightBoot.position.set(0, -0.32, 0.06);
+    this.rightLeg.add(rightBoot);
+
+    // ====================================
+    // 胴 (Body)
+    // ====================================
+    this.body = new THREE.Group();
+    this.body.position.y = 0.8;
     this.group.add(this.body);
 
-    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), this.skinMat);
-    this.head.position.set(0, 0.62, 0);
-    this.body.add(this.head);
+    // クローク / チュニック
+    const torsoGeo = new THREE.BoxGeometry(0.72, 0.7, 0.44);
+    const torso = new THREE.Mesh(torsoGeo, cloakMat);
+    torso.position.y = 0.12;
+    torso.castShadow = true;
+    this.body.add(torso);
 
-    this.leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.65, 0.18), this.heroMat);
-    this.leftArm.position.set(-0.48, 0.15, 0);
-    this.body.add(this.leftArm);
+    // 胸アーマー (プレートアーマー)
+    const chestGeo = new THREE.BoxGeometry(0.6, 0.4, 0.18);
+    const chestArmor = new THREE.Mesh(chestGeo, armorMat);
+    chestArmor.position.set(0, 0.2, 0.14);
+    this.body.add(chestArmor);
 
+    // 胹当て (左右)
+    const shoulderGeo = new THREE.SphereGeometry(0.21, 8, 6);
+    const leftShoulder = new THREE.Mesh(shoulderGeo, armorMat);
+    leftShoulder.position.set(-0.45, 0.3, 0);
+    leftShoulder.scale.set(1, 0.85, 0.85);
+    this.body.add(leftShoulder);
+
+    const rightShoulder = new THREE.Mesh(shoulderGeo, armorMat);
+    rightShoulder.position.set(0.45, 0.3, 0);
+    rightShoulder.scale.set(1, 0.85, 0.85);
+    this.body.add(rightShoulder);
+
+    // ベルト
+    const beltGeo = new THREE.BoxGeometry(0.74, 0.1, 0.46);
+    const belt = new THREE.Mesh(beltGeo, beltMat);
+    belt.position.set(0, -0.2, 0);
+    this.body.add(belt);
+
+    // ベルトバックル
+    const buckleGeo = new THREE.BoxGeometry(0.14, 0.14, 0.06);
+    const buckleMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.95 });
+    const buckle = new THREE.Mesh(buckleGeo, buckleMat);
+    buckle.position.set(0, -0.2, 0.24);
+    this.body.add(buckle);
+
+    // ====================================
+    // 左腕 (Shield Side)
+    // ====================================
+    this.leftArmPivot = new THREE.Group();
+    this.leftArmPivot.position.set(-0.45, 0.28, 0);
+    this.body.add(this.leftArmPivot);
+
+    const upperArmGeo = new THREE.CylinderGeometry(0.1, 0.09, 0.36, 8);
+    const leftUpperArm = new THREE.Mesh(upperArmGeo, armorMat);
+    leftUpperArm.position.set(0, -0.18, 0);
+    leftUpperArm.rotation.z = 0.15;
+    this.leftArmPivot.add(leftUpperArm);
+
+    const leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.34, 8), cloakMat);
+    leftForearm.position.set(-0.05, -0.52, 0);
+    this.leftArmPivot.add(leftForearm);
+
+    // 左手
+    const handGeo = new THREE.SphereGeometry(0.09, 8, 6);
+    const leftHand = new THREE.Mesh(handGeo, skinMat);
+    leftHand.position.set(-0.05, -0.72, 0);
+    this.leftArmPivot.add(leftHand);
+
+    // ====================================
+    // 右腕 (Sword Side) ピボット付き
+    // ====================================
     this.rightArmPivot = new THREE.Group();
-    this.rightArmPivot.position.set(0.48, 0.3, 0);
+    this.rightArmPivot.position.set(0.45, 0.28, 0);
     this.body.add(this.rightArmPivot);
 
-    this.rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.65, 0.18), this.heroMat);
-    this.rightArm.position.set(0, -0.25, 0);
-    this.rightArmPivot.add(this.rightArm);
+    const rightUpperArm = new THREE.Mesh(upperArmGeo, armorMat);
+    rightUpperArm.position.set(0, -0.18, 0);
+    rightUpperArm.rotation.z = -0.15;
+    this.rightArmPivot.add(rightUpperArm);
 
-    // 刀
+    const rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.34, 8), cloakMat);
+    rightForearm.position.set(0.05, -0.52, 0);
+    this.rightArmPivot.add(rightForearm);
+
+    const rightHand = new THREE.Mesh(handGeo, skinMat);
+    rightHand.position.set(0.05, -0.72, 0);
+    this.rightArmPivot.add(rightHand);
+
+    // ====================================
+    // 山初 (Katana) - 麺の付いた後期刺し
+    // ====================================
     this.swordGroup = new THREE.Group();
-    this.swordGroup.position.set(0, -0.5, 0.15);
-    const bladeGeo = new THREE.BoxGeometry(0.08, 0.02, 1.35);
-    const bladeMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.9 });
-    const bladeMesh = new THREE.Mesh(bladeGeo, bladeMat);
-    bladeMesh.position.z = 0.88;
-    this.swordGroup.add(bladeMesh);
+    this.swordGroup.position.set(0.06, -0.9, 0.12);
     this.rightArmPivot.add(this.swordGroup);
 
+    // 柄 (Handle)
+    const handleGeo = new THREE.CylinderGeometry(0.028, 0.035, 0.32, 8);
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0x1c0a00, roughness: 0.85 });
+    const handle = new THREE.Mesh(handleGeo, handleMat);
+    handle.position.set(0, -0.16, 0);
+    handle.rotation.x = Math.PI * 0.12;
+    this.swordGroup.add(handle);
+
+    // 麺 (Tsuba - 山形の麺)
+    const tsubaGeo = new THREE.TorusGeometry(0.1, 0.025, 6, 12);
+    const tsuba = new THREE.Mesh(tsubaGeo, guardMat);
+    tsuba.rotation.x = Math.PI / 2;
+    this.swordGroup.add(tsuba);
+
+    // 刀身 (ブレード) - 細く長いクエルチョン形
+    const bladeGeo = new THREE.BoxGeometry(0.04, 1.2, 0.008);
+    const blade = new THREE.Mesh(bladeGeo, bladeMat);
+    blade.position.set(0, 0.65, 0);
+    blade.rotation.x = Math.PI * 0.04;
+    this.swordGroup.add(blade);
+
+    // 刀身のエクストラ リムライト
+    const bladeLight = new THREE.PointLight(0x2563eb, 0.8, 2.5);
+    bladeLight.position.set(0, 0.8, 0);
+    this.swordGroup.add(bladeLight);
+
+    // 刃先
+    const tipGeo = new THREE.ConeGeometry(0.022, 0.18, 6);
+    const tip = new THREE.Mesh(tipGeo, bladeMat);
+    tip.position.set(0, 1.28, 0);
+    this.swordGroup.add(tip);
+
+    // ====================================
+    // 首 (Head)
+    // ====================================
+    this.headGroup = new THREE.Group();
+    this.headGroup.position.set(0, 0.82, 0);
+    this.body.add(this.headGroup);
+
+    // 顔
+    const faceGeo = new THREE.BoxGeometry(0.38, 0.38, 0.36);
+    const face = new THREE.Mesh(faceGeo, skinMat);
+    face.castShadow = true;
+    this.headGroup.add(face);
+
+    // 髪子 (Top)
+    const hairTopGeo = new THREE.BoxGeometry(0.4, 0.14, 0.38);
+    const hairTop = new THREE.Mesh(hairTopGeo, hairMat);
+    hairTop.position.set(0, 0.25, 0);
+    this.headGroup.add(hairTop);
+
+    // 後ろ髪 (Back)
+    const hairBackGeo = new THREE.BoxGeometry(0.36, 0.3, 0.1);
+    const hairBack = new THREE.Mesh(hairBackGeo, hairMat);
+    hairBack.position.set(0, 0.06, -0.22);
+    this.headGroup.add(hairBack);
+
+    // 左目
+    const eyeGeo = new THREE.BoxGeometry(0.07, 0.055, 0.04);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, emissive: 0x0ea5e9, emissiveIntensity: 0.4, roughness: 0.0 });
+    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    leftEye.position.set(-0.1, 0.04, 0.19);
+    this.headGroup.add(leftEye);
+
+    // 右目
+    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rightEye.position.set(0.1, 0.04, 0.19);
+    this.headGroup.add(rightEye);
+
+    // 鼻
+    const noseGeo = new THREE.BoxGeometry(0.05, 0.06, 0.06);
+    const nose = new THREE.Mesh(noseGeo, skinMat);
+    nose.position.set(0, -0.04, 0.2);
+    this.headGroup.add(nose);
+
+    // ヘルメット (钣坛形)
+    const helmetGeo = new THREE.BoxGeometry(0.44, 0.2, 0.44);
+    const helmet = new THREE.Mesh(helmetGeo, armorMat);
+    helmet.position.set(0, 0.22, -0.02);
+    this.headGroup.add(helmet);
+
+    // ヘルメットびさし (Visor)
+    const visorGeo = new THREE.BoxGeometry(0.28, 0.07, 0.04);
+    const visorMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.5, transparent: true, opacity: 0.85, roughness: 0.0 });
+    const visor = new THREE.Mesh(visorGeo, visorMat);
+    visor.position.set(0, 0.16, 0.22);
+    this.headGroup.add(visor);
+
+    // ヘルメット鼻ガード
+    const noseGuardGeo = new THREE.BoxGeometry(0.06, 0.22, 0.04);
+    const noseGuard = new THREE.Mesh(noseGuardGeo, armorMat);
+    noseGuard.position.set(0, 0.06, 0.22);
+    this.headGroup.add(noseGuard);
+
+    // ====================================
     // スラッシュエフェクト
+    // ====================================
     const slashGeo = new THREE.RingGeometry(1.2, 2.3, 20, 1, 0, Math.PI * 0.75);
-    this.slashMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+    this.slashMat = new THREE.MeshBasicMaterial({ color: 0x93c5fd, side: THREE.DoubleSide, transparent: true, opacity: 0 });
     this.slashMesh = new THREE.Mesh(slashGeo, this.slashMat);
     this.slashMesh.rotation.x = Math.PI / 2;
-    this.slashMesh.position.set(0, 1.1, 0.8);
-    this.group.add(this.slashMesh);
+    this.slashMesh.position.set(0, 0, 0.8);
+    this.body.add(this.slashMesh);
+
+    // 全パーツにシャドウ設定
+    this.group.traverse(obj => { if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; } });
   }
 
   update(delta) {
@@ -1083,7 +1277,8 @@ class Player {
     if (state.isAttacking) {
       this.updateAttackAnimation(delta);
     } else if (!state.isDashing) {
-      this.body.position.y = 1.1 + (isMoving ? Math.abs(Math.sin(this.walkCycle * 2)) * 0.08 : Math.sin(this.walkCycle) * 0.03);
+      // 歩行アニメーションを実行（足・腕・胴の連動）
+      this.animateWalk(delta, isMoving);
     }
   }
 
@@ -1257,6 +1452,22 @@ class Player {
       this.rightArmPivot.rotation.set(0, 0, 0);
     }
   }
+
+  // 歩行アニメーション (walkCycleに連動して足・腕・胴を動かす)
+  animateWalk(delta, isMoving) {
+    if (!this.leftLeg || !this.rightLeg) return;
+    const speed = isMoving ? 12 : 2;
+    this.walkCycle += delta * speed;
+    const swing = isMoving ? 0.35 : 0.06;
+    // 足を前後に振る
+    this.leftLeg.rotation.x  =  Math.sin(this.walkCycle) * swing;
+    this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * swing;
+    // 左腕は右足と逆相に振る
+    if (this.leftArmPivot) this.leftArmPivot.rotation.x = -Math.sin(this.walkCycle) * swing * 0.7;
+    // ボディの上下動 (歩行感)
+    if (this.body) this.body.position.y = 0.8 + (isMoving ? Math.abs(Math.sin(this.walkCycle * 2)) * 0.06 : Math.sin(this.walkCycle) * 0.025);
+  }
+
 
   performAttackHitCheck() {
     const activeCombo = (this.comboStep + 2) % 3;
@@ -1573,61 +1784,641 @@ class Enemy {
   }
 }
 
-// ゾンビ (弱点: 炎, 耐性: 氷)
+// =============================================================================
+// モンスター横共通ヒールパーツビルダー関数
+// =============================================================================
+
+/**
+ * キャラクターの足を作成するヘルパー
+ * @param {THREE.Group} group - 足を追加する親グループ
+ * @param {THREE.Material} legMat - 足のマテリアル
+ * @param {THREE.Material} bootMat - 靴のマテリアル
+ * @param {number} legW - 足の幅
+ * @param {number} legH - 足の高さ
+ * @param {number} baseY - 足を配置するY座標
+ * @returns {{ leftLeg, rightLeg }}
+ */
+function buildLegs(group, legMat, bootMat, legW, legH, baseY) {
+  const legGeo  = new THREE.BoxGeometry(legW, legH, legW);
+  const bootGeo = new THREE.BoxGeometry(legW * 1.1, legH * 0.3, legW * 1.4);
+
+  const leftLeg  = new THREE.Mesh(legGeo, legMat);
+  const rightLeg = new THREE.Mesh(legGeo, legMat);
+  leftLeg.position.set(-legW * 0.6, baseY, 0);
+  rightLeg.position.set(legW * 0.6, baseY, 0);
+  leftLeg.castShadow = rightLeg.castShadow = true;
+  group.add(leftLeg);
+  group.add(rightLeg);
+
+  if (bootMat) {
+    const lb = new THREE.Mesh(bootGeo, bootMat);
+    lb.position.set(0, -legH * 0.6, legW * 0.2);
+    leftLeg.add(lb);
+    const rb = new THREE.Mesh(bootGeo, bootMat);
+    rb.position.set(0, -legH * 0.6, legW * 0.2);
+    rightLeg.add(rb);
+  }
+  return { leftLeg, rightLeg };
+}
+
+// ゾンビ (弱点: 炎, 耐性: 氷) - 腐敗した人体型
 class ZombieEnemy extends Enemy {
   constructor() {
     super('zombie', 35, 2.2, 10, 0.7, 'flame', 'ice', 10);
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.78, 0.42), new THREE.MeshStandardMaterial({ color: 0x166534 }));
-    this.body.position.y = 1.05;
+
+    const skinMat  = new THREE.MeshStandardMaterial({ color: 0x2d5a27, roughness: 0.95, metalness: 0.0 });
+    const rotMat   = new THREE.MeshStandardMaterial({ color: 0x1a3a17, roughness: 1.0, metalness: 0.0 });
+    const eyeMat   = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 0.8, roughness: 0.0 });
+    const clothMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.9, metalness: 0.0 });
+    const boneMat  = new THREE.MeshStandardMaterial({ color: 0xd4c5a0, roughness: 0.85 });
+
+    // 足
+    const { leftLeg, rightLeg } = buildLegs(this.group, clothMat, rotMat, 0.22, 0.48, 0.24);
+    this.leftLeg = leftLeg;
+    this.rightLeg = rightLeg;
+
+    // 胴
+    this.body = new THREE.Group();
+    this.body.position.y = 0.75;
     this.group.add(this.body);
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.64, 0.38), clothMat);
+    torso.position.y = 0.1;
+    torso.castShadow = true;
+    this.body.add(torso);
+
+    // 暲んだ左腕 (歩十小身のリアリティ)
+    const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), skinMat);
+    lArm.position.set(-0.42, 0.05, 0);
+    lArm.rotation.z = 0.3;
+    lArm.castShadow = true;
+    this.body.add(lArm);
+
+    // 右腕 (伸びている)
+    const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.58, 0.18), skinMat);
+    rArm.position.set(0.42, 0.2, 0.1);
+    rArm.rotation.z = -0.5;
+    rArm.rotation.x = -0.4;
+    rArm.castShadow = true;
+    this.body.add(rArm);
+
+    // 首
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.16, 8), skinMat);
+    neck.position.y = 0.46;
+    this.body.add(neck);
+
+    // 頂骨
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skinMat);
+    skull.position.y = 0.65;
+    skull.scale.set(1.0, 1.1, 0.95);
+    skull.castShadow = true;
+    this.body.add(skull);
+
+    // 下顔 (jaw)
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.22), skinMat);
+    jaw.position.set(0, 0.47, 0.06);
+    this.body.add(jaw);
+
+    // 腐った肉 (spot)
+    const spot1 = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), rotMat);
+    spot1.position.set(-0.06, 0.6, 0.19);
+    this.body.add(spot1);
+
+    // 目
+    const eyeGeo = new THREE.SphereGeometry(0.048, 8, 6);
+    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+    lEye.position.set(-0.08, 0.67, 0.2);
+    this.body.add(lEye);
+    const rEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rEye.position.set(0.08, 0.67, 0.2);
+    this.body.add(rEye);
+
+    // 骨の欲片 (墚骨)
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.018, 6, 12, Math.PI), boneMat);
+    rib.position.set(0, 0.15, 0.18);
+    rib.rotation.x = -Math.PI / 2;
+    this.body.add(rib);
+
+    // HPスプライトを高く設定
+    this.hpSprite.position.y = 2.6;
+    this.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 }
 
-// ゴースト (弱点: 雷, 耐性: 風)
+// ゴースト (弱点: 雷, 耐性: 風) - 半透明の幽霊型
 class GhostEnemy extends Enemy {
   constructor() {
     super('ghost', 25, 3.2, 12, 0.65, 'thunder', 'wind', 15);
-    this.body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), new THREE.MeshStandardMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.8 }));
-    this.body.position.y = 1.4;
-    this.group.add(this.body);
+
+    const ghostMat  = new THREE.MeshStandardMaterial({
+      color: 0xb8eeff, emissive: 0x60b8e0, emissiveIntensity: 0.4,
+      transparent: true, opacity: 0.72,
+      roughness: 0.0, metalness: 0.0,
+    });
+    const eyeMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5,
+      roughness: 0.0,
+    });
+    const coreMat = new THREE.MeshStandardMaterial({
+      color: 0x90e0ff, emissive: 0x38bdf8, emissiveIntensity: 0.9,
+      transparent: true, opacity: 0.6,
+    });
+
+    // ドレープ (鏈)
+    const drapeGeo = new THREE.ConeGeometry(0.45, 1.1, 10, 1, true);
+    const drape = new THREE.Mesh(drapeGeo, ghostMat);
+    drape.position.y = 0.75;
+    drape.castShadow = true;
+    this.group.add(drape);
+
+    // 上半身 (corpo) - 圆形
+    const bodyGeo = new THREE.SphereGeometry(0.38, 12, 10);
+    const ghostBody = new THREE.Mesh(bodyGeo, ghostMat);
+    ghostBody.position.y = 1.6;
+    ghostBody.scale.set(1.0, 1.2, 0.9);
+    ghostBody.castShadow = true;
+    this.group.add(ghostBody);
+    this.body = ghostBody; // 移動アニメ用
+
+    // 首
+    const headGeo = new THREE.SphereGeometry(0.28, 12, 10);
+    const ghostHead = new THREE.Mesh(headGeo, ghostMat);
+    ghostHead.position.y = 2.28;
+    ghostHead.scale.set(1.0, 1.15, 0.92);
+    this.group.add(ghostHead);
+
+    // 目 (2つの白点)
+    const eyeGeo = new THREE.SphereGeometry(0.065, 8, 6);
+    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+    lEye.position.set(-0.1, 2.34, 0.24);
+    this.group.add(lEye);
+    const rEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rEye.position.set(0.1, 2.34, 0.24);
+    this.group.add(rEye);
+
+    // 口 (最大に銃んでいる橙形)
+    const mouthGeo = new THREE.TorusGeometry(0.09, 0.025, 8, 10, Math.PI);
+    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 1.0 });
+    const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+    mouth.position.set(0, 2.18, 0.26);
+    mouth.rotation.x = -Math.PI / 2;
+    this.group.add(mouth);
+
+    // 中心の光源 (energy core)
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), coreMat);
+    core.position.y = 1.6;
+    this.group.add(core);
+
+    const coreLight = new THREE.PointLight(0x38bdf8, 1.0, 3.0);
+    coreLight.position.y = 1.6;
+    this.group.add(coreLight);
+    this.coreLight = coreLight;
+
+    // HPスプライトを高く設定
+    this.hpSprite.position.y = 3.0;
+    this.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  }
+
+  update(delta, playerPos) {
+    // コアライトのパルスアニメ
+    if (this.coreLight) {
+      this.coreLight.intensity = 0.8 + Math.sin(Date.now() * 0.004) * 0.4;
+    }
+    // 浮遊アニメ (上下に色々赳る)
+    if (this.body) {
+      this.body.position.y = 1.6 + Math.sin(Date.now() * 0.003) * 0.18;
+    }
+    super.update(delta, playerPos);
   }
 }
 
-// ゴブリン (弱点: 爆発, 耐性: 雷)
+// ゴブリン (弱点: 爆発, 耐性: 雷) - 小柄な株
 class GoblinEnemy extends Enemy {
   constructor() {
     super('goblin', 30, 3.6, 15, 0.6, 'explosion', 'thunder', 15);
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.35), new THREE.MeshStandardMaterial({ color: 0x65a30d }));
-    this.body.position.y = 0.75;
+
+    const skinMat   = new THREE.MeshStandardMaterial({ color: 0x4a7c00, roughness: 0.85, metalness: 0.0 });
+    const darkMat   = new THREE.MeshStandardMaterial({ color: 0x2d5200, roughness: 0.9 });
+    const eyeMat    = new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff5500, emissiveIntensity: 0.6 });
+    const loinMat   = new THREE.MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.95 });
+    const metalMat  = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.35, metalness: 0.8 });
+
+    // 小さな足
+    const { leftLeg, rightLeg } = buildLegs(this.group, darkMat, loinMat, 0.18, 0.38, 0.19);
+    this.leftLeg = leftLeg;
+    this.rightLeg = rightLeg;
+
+    // 胴
+    this.body = new THREE.Group();
+    this.body.position.y = 0.62;
     this.group.add(this.body);
+
+    // 腹部 (さしてる)
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), skinMat);
+    belly.position.set(0, 0.1, 0.06);
+    belly.scale.set(1.15, 1.0, 1.1);
+    belly.castShadow = true;
+    this.body.add(belly);
+
+    // 胴 (胹)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.52, 0.32), skinMat);
+    torso.position.y = 0.1;
+    torso.castShadow = true;
+    this.body.add(torso);
+
+    // 左腕
+    const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.44, 8), skinMat);
+    lArm.position.set(-0.32, 0.06, 0);
+    lArm.rotation.z = 0.25;
+    this.body.add(lArm);
+
+    // 右腕 (武器持ち)
+    const rArm = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.44, 8), skinMat);
+    rArm.position.set(0.32, 0.06, 0);
+    rArm.rotation.z = -0.25;
+    this.body.add(rArm);
+
+    // 粗末な短刀
+    const dagger = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.02), metalMat);
+    dagger.position.set(0.46, -0.12, 0.1);
+    dagger.rotation.z = -0.3;
+    this.body.add(dagger);
+
+    // 首
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.12, 8), skinMat);
+    neck.position.y = 0.4;
+    this.body.add(neck);
+
+    // 頂骨 (大きな頭)
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), skinMat);
+    head.position.y = 0.6;
+    head.scale.set(1.0, 1.05, 1.0);
+    head.castShadow = true;
+    this.body.add(head);
+
+    // 大きな耳 (左)
+    const earGeo = new THREE.ConeGeometry(0.075, 0.25, 7);
+    const leftEar = new THREE.Mesh(earGeo, skinMat);
+    leftEar.position.set(-0.26, 0.62, 0);
+    leftEar.rotation.z = Math.PI * 0.8;
+    this.body.add(leftEar);
+    // 大きな耳 (右)
+    const rightEar = new THREE.Mesh(earGeo, skinMat);
+    rightEar.position.set(0.26, 0.62, 0);
+    rightEar.rotation.z = -Math.PI * 0.8;
+    this.body.add(rightEar);
+
+    // 目
+    const eyeGeo = new THREE.SphereGeometry(0.048, 8, 6);
+    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+    lEye.position.set(-0.08, 0.63, 0.22);
+    this.body.add(lEye);
+    const rEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rEye.position.set(0.08, 0.63, 0.22);
+    this.body.add(rEye);
+
+    // 牙
+    const toothGeo = new THREE.ConeGeometry(0.024, 0.1, 5);
+    const toothMat = new THREE.MeshStandardMaterial({ color: 0xfff8e7, roughness: 0.5 });
+    const lt = new THREE.Mesh(toothGeo, toothMat);
+    lt.position.set(-0.055, 0.52, 0.23);
+    lt.rotation.x = Math.PI;
+    this.body.add(lt);
+    const rt = new THREE.Mesh(toothGeo, toothMat);
+    rt.position.set(0.055, 0.52, 0.23);
+    rt.rotation.x = Math.PI;
+    this.body.add(rt);
+
+    this.hpSprite.position.y = 2.2;
+    this.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 }
 
-// キングゴブリン (中ボス: 弱点: 氷, 耐性: 爆発)
+// キングゴブリン (中ボス: 弱点: 氷, 耐性: 爆発) - 重厘な王者
 class KingGoblinEnemy extends Enemy {
   constructor() {
     super('king_goblin', 200, 1.8, 25, 1.9, 'ice', 'explosion', 80);
     this.isBoss = true;
+
+    const skinMat  = new THREE.MeshStandardMaterial({ color: 0x2d5c00, roughness: 0.75, metalness: 0.0 });
+    const armorMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.3, metalness: 0.8 });
+    const goldMat  = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa8800, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.95 });
+    const eyeMat   = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 1.2 });
+    const capeMat  = new THREE.MeshStandardMaterial({ color: 0x6b0000, roughness: 0.85 });
+
+    // 大きな足
+    const { leftLeg, rightLeg } = buildLegs(this.group, armorMat, null, 0.38, 0.72, 0.36);
+    this.leftLeg = leftLeg;
+    this.rightLeg = rightLeg;
+
+    // パンツ部分
+    const pants = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.4, 0.58), capeMat);
+    pants.position.y = 0.76;
+    this.group.add(pants);
+
+    // 胴
+    this.body = new THREE.Group();
+    this.body.position.y = 1.2;
+    this.group.add(this.body);
+
+    // 胴アーマー (重厘)
+    const torsoArmor = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 0.68), armorMat);
+    torsoArmor.position.y = 0.1;
+    torsoArmor.castShadow = true;
+    this.body.add(torsoArmor);
+
+    // 胸こばの金觉装飾
+    const chestDeco = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.5, 0.12), goldMat);
+    chestDeco.position.set(0, 0.2, 0.34);
+    this.body.add(chestDeco);
+
+    // 肩スパイク (左)
+    const spikeGeo = new THREE.ConeGeometry(0.06, 0.3, 6);
+    for (let i = -1; i <= 1; i += 2) {
+      const spike = new THREE.Mesh(spikeGeo, goldMat);
+      spike.position.set(i * 0.6, 0.35, 0);
+      spike.rotation.z = i * -Math.PI / 2;
+      this.body.add(spike);
+    }
+
+    // マントル (cape)
+    const capeGeo = new THREE.BoxGeometry(1.1, 0.95, 0.08);
+    const cape = new THREE.Mesh(capeGeo, capeMat);
+    cape.position.set(0, -0.1, -0.36);
+    this.body.add(cape);
+
+    // 左腕
+    const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.75, 0.3), armorMat);
+    lArm.position.set(-0.72, 0.05, 0);
+    lArm.castShadow = true;
+    this.body.add(lArm);
+
+    // 右腕 (巨大なメイス持ち)
+    const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.75, 0.3), armorMat);
+    rArm.position.set(0.72, 0.05, 0);
+    rArm.castShadow = true;
+    this.body.add(rArm);
+
+    // 巨大なメイス
+    const maceHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), armorMat);
+    maceHead.position.set(0.72, -0.62, 0);
+    this.body.add(maceHead);
+    const maceHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.6, 8), new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.85 }));
+    maceHandle.position.set(0.72, -0.32, 0);
+    this.body.add(maceHandle);
+    for (let i = 0; i < 6; i++) {
+      const spk = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.18, 5), goldMat);
+      const a = (i / 6) * Math.PI * 2;
+      spk.position.set(0.72 + Math.cos(a) * 0.22, -0.62, Math.sin(a) * 0.22);
+      spk.rotation.z = -a * 0.3;
+      this.body.add(spk);
+    }
+
+    // 首
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.2, 8), skinMat);
+    neck.position.y = 0.62;
+    this.body.add(neck);
+
+    // 頭
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), skinMat);
+    head.position.y = 0.88;
+    head.scale.set(1.0, 1.05, 0.95);
+    head.castShadow = true;
+    this.body.add(head);
+
+    // 大きな耳 (左右)
+    const bigEarGeo = new THREE.ConeGeometry(0.11, 0.4, 7);
+    const lEar = new THREE.Mesh(bigEarGeo, skinMat);
+    lEar.position.set(-0.38, 0.9, 0);
+    lEar.rotation.z = Math.PI * 0.75;
+    this.body.add(lEar);
+    const rEar = new THREE.Mesh(bigEarGeo, skinMat);
+    rEar.position.set(0.38, 0.9, 0);
+    rEar.rotation.z = -Math.PI * 0.75;
+    this.body.add(rEar);
+
+    // 目
+    const eyeGeo = new THREE.SphereGeometry(0.08, 8, 6);
+    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+    lEye.position.set(-0.13, 0.9, 0.35);
+    this.body.add(lEye);
+    const rEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rEye.position.set(0.13, 0.9, 0.35);
+    this.body.add(rEye);
+
+    // 王冠 (Crown) - キングの従
+    const crownBase = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.18, 8), goldMat);
+    crownBase.position.y = 1.32;
+    this.body.add(crownBase);
+    for (let i = 0; i < 5; i++) {
+      const prong = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.28, 5), goldMat);
+      const a = (i / 5) * Math.PI * 2;
+      prong.position.set(Math.cos(a) * 0.32, 1.5, Math.sin(a) * 0.32);
+      this.body.add(prong);
+    }
+    // 王冠宝石
+    const gemMat = new THREE.MeshStandardMaterial({ color: 0xff1111, emissive: 0xff0000, emissiveIntensity: 1.5, roughness: 0.0, metalness: 0.0 });
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), gemMat);
+    gem.position.set(0, 1.48, 0.38);
+    this.body.add(gem);
+
+    // ボスオーラ
+    const aura = new THREE.PointLight(0x00ff88, 1.5, 6.0);
+    aura.position.y = 1.0;
+    this.group.add(aura);
+    this.auraLight = aura;
+
     this.hpSprite.position.y = 4.2;
     this.hpSprite.scale.set(2.4, 0.5, 1.0);
+    this.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  }
 
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x4d7c0f }));
-    this.body.position.y = 2.0;
-    this.group.add(this.body);
+  update(delta, playerPos) {
+    // 王冠が光る
+    if (this.auraLight) {
+      this.auraLight.intensity = 1.2 + Math.sin(Date.now() * 0.002) * 0.5;
+    }
+    super.update(delta, playerPos);
   }
 }
 
-// デーモン (大ボス: 弱点: 風, 耐性: 炎)
+// デーモン (大ボス: 弱点: 風, 耐性: 炎) - 翔と角の巷魔
 class DemonEnemy extends Enemy {
   constructor() {
     super('demon', 320, 2.0, 35, 2.2, 'wind', 'flame', 120);
     this.isBoss = true;
+
+    const demonSkin = new THREE.MeshStandardMaterial({ color: 0x6b0000, roughness: 0.7, metalness: 0.1 });
+    const darkArmor = new THREE.MeshStandardMaterial({ color: 0x1a0000, roughness: 0.2, metalness: 0.9 });
+    const hellMat   = new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 1.2, roughness: 0.0 });
+    const eyeMat    = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xff4400, emissiveIntensity: 2.0 });
+    const wingMat   = new THREE.MeshStandardMaterial({
+      color: 0x330000, emissive: 0x660000, emissiveIntensity: 0.3,
+      transparent: true, opacity: 0.88, side: THREE.DoubleSide, roughness: 0.6,
+    });
+
+    // 大きな足
+    const { leftLeg, rightLeg } = buildLegs(this.group, darkArmor, null, 0.42, 0.9, 0.45);
+    this.leftLeg = leftLeg;
+    this.rightLeg = rightLeg;
+
+    // 胴
+    this.body = new THREE.Group();
+    this.body.position.y = 1.45;
+    this.group.add(this.body);
+
+    // 胴アーマー (巨大)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.1, 0.82), demonSkin);
+    torso.position.y = 0.1;
+    torso.castShadow = true;
+    this.body.add(torso);
+
+    // 胸プレート (黒鉄アーマー)
+    const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.16), darkArmor);
+    chestPlate.position.set(0, 0.2, 0.42);
+    this.body.add(chestPlate);
+
+    // 肩オーナメント (トゲのような全形肩パッド)
+    const shoulderGeo = new THREE.SphereGeometry(0.3, 8, 6);
+    for (let i = -1; i <= 1; i += 2) {
+      const shoulder = new THREE.Mesh(shoulderGeo, darkArmor);
+      shoulder.position.set(i * 0.82, 0.45, 0);
+      shoulder.scale.set(1.0, 0.85, 0.85);
+      this.body.add(shoulder);
+      // 肩スパイク
+      for (let s = 0; s < 3; s++) {
+        const sp = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.22, 5), hellMat);
+        sp.position.set(i * (0.82 + s * 0.06), 0.52 + s * 0.05, -s * 0.04);
+        sp.rotation.z = i * (Math.PI * 0.45 + s * 0.15);
+        this.body.add(sp);
+      }
+    }
+
+    // 左腕 (巨大)
+    const armGeo = new THREE.BoxGeometry(0.36, 0.9, 0.36);
+    const lArm = new THREE.Mesh(armGeo, demonSkin);
+    lArm.position.set(-0.92, -0.1, 0);
+    lArm.castShadow = true;
+    this.body.add(lArm);
+
+    // 右腕 (巨大)
+    const rArm = new THREE.Mesh(armGeo, demonSkin);
+    rArm.position.set(0.92, -0.1, 0);
+    rArm.castShadow = true;
+    this.body.add(rArm);
+
+    // クロー (隣に酒色スラッシュ)
+    const clawGeo = new THREE.ConeGeometry(0.05, 0.28, 5);
+    [[-0.92, -0.58], [0.92, -0.58]].forEach(([x, y], si) => {
+      for (let ci = 0; ci < 3; ci++) {
+        const claw = new THREE.Mesh(clawGeo, hellMat);
+        claw.position.set(x + (ci - 1) * 0.12, y - 0.1, 0.16);
+        claw.rotation.x = -0.5;
+        this.body.add(claw);
+      }
+    });
+
+    // 首
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.25, 8), demonSkin);
+    neck.position.y = 0.7;
+    this.body.add(neck);
+
+    // 頭 (巨大な悪魔の頭)
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 12, 10), demonSkin);
+    head.position.y = 1.08;
+    head.scale.set(1.0, 1.05, 0.92);
+    head.castShadow = true;
+    this.body.add(head);
+
+    // 角 (左右)
+    const hornGeo = new THREE.ConeGeometry(0.085, 0.6, 7);
+    const lHorn = new THREE.Mesh(hornGeo, darkArmor);
+    lHorn.position.set(-0.28, 1.54, 0);
+    lHorn.rotation.z = 0.35;
+    lHorn.rotation.x = -0.15;
+    this.body.add(lHorn);
+    const rHorn = new THREE.Mesh(hornGeo, darkArmor);
+    rHorn.position.set(0.28, 1.54, 0);
+    rHorn.rotation.z = -0.35;
+    rHorn.rotation.x = -0.15;
+    this.body.add(rHorn);
+
+    // 目 (大きな炒り目)
+    const eyeGeo = new THREE.SphereGeometry(0.1, 10, 8);
+    const lEye = new THREE.Mesh(eyeGeo, eyeMat);
+    lEye.position.set(-0.18, 1.12, 0.44);
+    this.body.add(lEye);
+    const rEye = new THREE.Mesh(eyeGeo, eyeMat);
+    rEye.position.set(0.18, 1.12, 0.44);
+    this.body.add(rEye);
+
+    // 目の光
+    const eyeLight = new THREE.PointLight(0xff4400, 2.0, 3.5);
+    eyeLight.position.set(0, 1.1, 0.5);
+    this.body.add(eyeLight);
+    this.eyeLight = eyeLight;
+
+    // 口 (牙あり)
+    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x1a0000, roughness: 1.0 });
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.08), mouthMat);
+    mouth.position.set(0, 0.88, 0.46);
+    this.body.add(mouth);
+    // 牙
+    const fangGeo = new THREE.ConeGeometry(0.04, 0.2, 5);
+    const fangMat = new THREE.MeshStandardMaterial({ color: 0xfff0e0, roughness: 0.4 });
+    [-0.18, -0.06, 0.06, 0.18].forEach(fx => {
+      const fang = new THREE.Mesh(fangGeo, fangMat);
+      fang.position.set(fx, 0.82, 0.46);
+      fang.rotation.x = Math.PI;
+      this.body.add(fang);
+    });
+
+    // 翔 (wings) - 一演騒焼な悪魔の翔
+    const wing1Geo = new THREE.BufferGeometry();
+    const wVerts = new Float32Array([
+      // 左翔 (3トライアングルで構成)
+      0, 0.3, -0.1,   -1.8, 1.2, -0.5,  -2.5, 0.0, -0.3,
+      0, 0.3, -0.1,   -2.5, 0.0, -0.3,  -1.5, -0.8, 0.0,
+      0, 0.3, -0.1,   -1.5, -0.8, 0.0,  -0.5, -0.5, 0.1,
+    ]);
+    wing1Geo.setAttribute('position', new THREE.BufferAttribute(wVerts, 3));
+    wing1Geo.computeVertexNormals();
+    const leftWing = new THREE.Mesh(wing1Geo, wingMat);
+    this.body.add(leftWing);
+
+    // 右翔 (X軸反転)
+    const rightWing = leftWing.clone();
+    rightWing.scale.x = -1;
+    this.body.add(rightWing);
+    this.leftWing = leftWing;
+    this.rightWing = rightWing;
+
+    // マグマ パーティクル (body glow)
+    const glow = new THREE.PointLight(0xff2200, 2.5, 8.0);
+    glow.position.y = 0.5;
+    this.group.add(glow);
+    this.glowLight = glow;
+
     this.hpSprite.position.y = 5.0;
     this.hpSprite.scale.set(2.8, 0.6, 1.0);
+    this.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  }
 
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.2, 1.4), new THREE.MeshStandardMaterial({ color: 0x991b1b }));
-    this.body.position.y = 2.5;
-    this.group.add(this.body);
+  update(delta, playerPos) {
+    // 目が谷を描くために色変わり
+    if (this.eyeLight) {
+      this.eyeLight.intensity = 1.8 + Math.sin(Date.now() * 0.005) * 0.8;
+    }
+    if (this.glowLight) {
+      this.glowLight.intensity = 2.0 + Math.sin(Date.now() * 0.003) * 0.8;
+    }
+    // 翔のパタパタアニメ
+    if (this.leftWing) {
+      const flapAngle = Math.sin(Date.now() * 0.004) * 0.18;
+      this.leftWing.rotation.y = flapAngle;
+      this.rightWing.rotation.y = -flapAngle;
+    }
+    super.update(delta, playerPos);
   }
 }
 
