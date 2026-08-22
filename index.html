@@ -138,41 +138,40 @@
   <div id="ui-layer" class="hidden">
     <!-- ヘッダー（HP/MPバー、ステージバッジ、ボスバー、スコア、ショップ、メニュー） -->
     <header class="game-header">
-      <!-- プレイヤーHP / MPステータス & ステージ情報 -->
-      <div class="player-status-card">
-        <div class="stage-badge-row">
-          <span id="stage-badge" class="stage-badge">STAGE 1: 崩落の古代遺跡</span>
-          <span id="stage-progress" class="stage-progress">討伐: 0/10</span>
-        </div>
-        <div class="status-row hp-row">
-          <span class="status-label">❤️ HP</span>
-          <div class="bar-container">
-            <div id="player-hp-damage-bar" class="bar-damage"></div>
-            <div id="player-hp-bar" class="bar-fill hp-fill" style="width: 100%;"></div>
+      <!-- 左側ステータスカラム (1Pステータス + 2Pステータス) -->
+      <div class="status-cards-col">
+        <!-- プレイヤーHP / MPステータス & ステージ情報 -->
+        <div class="player-status-card">
+          <div class="stage-badge-row">
+            <span id="stage-badge" class="stage-badge">STAGE 1: 崩落の古代遺跡</span>
+            <span id="stage-progress" class="stage-progress">討伐: 0/10</span>
           </div>
-          <span id="player-hp-text" class="status-val">100/100</span>
-        </div>
-        <div class="status-row mp-row">
-          <span class="status-label">🔮 MP</span>
-          <div class="bar-container">
-            <div id="player-mp-bar" class="bar-fill mp-fill" style="width: 100%;"></div>
+          <div class="status-row hp-row">
+            <span class="status-label">❤️ HP</span>
+            <div class="bar-container">
+              <div id="player-hp-damage-bar" class="bar-damage"></div>
+              <div id="player-hp-bar" class="bar-fill hp-fill" style="width: 100%;"></div>
+            </div>
+            <span id="player-hp-text" class="status-val">100/100</span>
           </div>
-          <span id="player-mp-text" class="status-val">100/100</span>
+          <div class="status-row mp-row">
+            <span class="status-label">🔮 MP</span>
+            <div class="bar-container">
+              <div id="player-mp-bar" class="bar-fill mp-fill" style="width: 100%;"></div>
+            </div>
+            <span id="player-mp-text" class="status-val">100/100</span>
+          </div>
         </div>
-      </div>
 
-      <!-- 2Pステータスカード（オンラインマルチプレイ時のみ表示） -->
-      <div id="p2-status-card" class="player-status-card p2-card hidden">
-        <div class="stage-badge-row">
-          <span class="stage-badge p2-badge">2P BUDDY</span>
-          <span id="p2-status-label" class="stage-progress">ONLINE</span>
-        </div>
-        <div class="status-row hp-row">
-          <span class="status-label">❤️ 2P</span>
-          <div class="bar-container">
-            <div id="p2-hp-bar" class="bar-fill hp-fill p2-hp" style="width: 100%;"></div>
+        <!-- 2Pステータスカード（オンラインマルチプレイ時のみ表示） -->
+        <div id="p2-status-card" class="player-status-card p2-card hidden">
+          <div class="status-row hp-row">
+            <span class="status-label p2-label">🟢 2P</span>
+            <div class="bar-container">
+              <div id="p2-hp-bar" class="bar-fill hp-fill p2-hp" style="width: 100%;"></div>
+            </div>
+            <span id="p2-hp-text" class="status-val">100/100</span>
           </div>
-          <span id="p2-hp-text" class="status-val">100/100</span>
         </div>
       </div>
 

@@ -289,18 +289,28 @@ html, body {
   width: 100%;
   pointer-events: auto;
   gap: 12px;
+  position: relative;
+}
+
+.status-cards-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 210px;
+  max-width: 230px;
+  z-index: 12;
 }
 
 .player-status-card {
   background: var(--panel-bg);
   backdrop-filter: blur(12px);
   border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  padding: 8px 14px;
+  border-radius: 12px;
+  padding: 6px 10px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-width: 240px;
+  gap: 4px;
+  width: 100%;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
@@ -312,14 +322,14 @@ html, body {
 }
 
 .stage-badge {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 900;
   color: #fbbf24;
   letter-spacing: 0.5px;
 }
 
 .stage-progress {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-muted);
 }
@@ -331,16 +341,16 @@ html, body {
 }
 
 .status-label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  width: 44px;
+  width: 42px;
   color: var(--text-main);
 }
 
 .bar-container {
   position: relative;
   flex: 1;
-  height: 12px;
+  height: 11px;
   background: rgba(0, 0, 0, 0.6);
   border-radius: 6px;
   overflow: hidden;
@@ -377,32 +387,31 @@ html, body {
 }
 
 .status-val {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  width: 58px;
+  width: 54px;
   text-align: right;
   color: #e2e8f0;
 }
 
-/* ボスHPバー */
+/* ボスHPバー (画面上部中央固定・他要素と被らない) */
 .boss-hp-container {
   position: absolute;
-  top: calc(12px + var(--safe-area-inset-top));
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(14px);
   border: 2px solid #f59e0b;
   border-radius: 14px;
-  padding: 8px 18px;
-  min-width: 340px;
-  max-width: 90vw;
+  padding: 6px 16px;
+  width: min(440px, 46vw);
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  z-index: 15;
+  gap: 4px;
+  z-index: 25;
 }
 
 .boss-hp-container.hidden { display: none !important; }
@@ -1188,10 +1197,10 @@ html, body {
    ============================================================================= */
 .minimap-container {
   position: absolute;
-  top: calc(68px + var(--safe-area-inset-top));
-  left: 12px;
-  width: 134px;
-  background: rgba(4, 8, 16, 0.78);
+  top: calc(125px + var(--safe-area-inset-top));
+  left: 20px;
+  width: 122px;
+  background: rgba(4, 8, 16, 0.85);
   border: 1.5px solid rgba(56, 189, 248, 0.45);
   border-radius: 12px;
   padding: 4px;
@@ -1204,17 +1213,17 @@ html, body {
 #minimap-canvas {
   display: block;
   border-radius: 8px;
-  width: 126px;
-  height: 126px;
+  width: 114px;
+  height: 114px;
 }
 
 .minimap-label {
   text-align: center;
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 800;
   letter-spacing: 2px;
   color: rgba(56, 189, 248, 0.7);
-  padding-top: 3px;
+  padding-top: 2px;
 }
 
 /* =============================================================================
@@ -1441,12 +1450,14 @@ html, body {
 /* 2Pステータスカード */
 .p2-card {
   border-color: rgba(16, 185, 129, 0.45) !important;
-  background: rgba(6, 78, 59, 0.35) !important;
+  background: rgba(6, 78, 59, 0.45) !important;
+  padding: 4px 10px !important;
+  gap: 0 !important;
 }
-.p2-badge {
-  background: rgba(16, 185, 129, 0.3) !important;
+.p2-label {
   color: #34d399 !important;
-  border-color: rgba(16, 185, 129, 0.5) !important;
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 .p2-hp {
   background: linear-gradient(90deg, #10b981, #34d399) !important;
