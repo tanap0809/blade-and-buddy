@@ -894,154 +894,325 @@ class SaveManager {
 const saveData = SaveManager.load();
 state.coins = saveData.coins;
 
-// =============================================================================
-// 5. Three.js 基本セットアップ & ダンジョン環境
-// =============================================================================
+// iPad検知 & パフォーマンス設定
+const isIPad = /iPad/.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+
 const container = document.getElementById('game-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x06070a);
-scene.fog = new THREE.FogExp2(0x090b10, 0.028);
+scene.background = new THREE.Color(0x87ceeb);           // 天空青
+scene.fog = new THREE.FogExp2(0xaac8e0, 0.006);          // 広大感の薄い霧
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 120);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 6, -8);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: !isIPad, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isIPad ? 1.5 : 2));
+renderer.shadowMap.enabled = !isIPad;                   // iPadはシャドウ無効化
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
-const ambientLight = new THREE.AmbientLight(0x1e293b, 1.2);
+const ambientLight = new THREE.AmbientLight(0x8fadc4, 1.4); // 混江光 (明るめ)
 scene.add(ambientLight);
 
-const moonLight = new THREE.DirectionalLight(0x60a5fa, 0.6);
-moonLight.position.set(10, 25, -15);
-scene.add(moonLight);
+const sunLight = new THREE.DirectionalLight(0xfff5e0, 2.0); // 太陽光
+if (!isIPad) {
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.width  = 1024;
+  sunLight.shadow.mapSize.height = 1024;
+  sunLight.shadow.camera.near = 1;
+  sunLight.shadow.camera.far  = 200;
+  sunLight.shadow.camera.left = -80;
+  sunLight.shadow.camera.right = 80;
+  sunLight.shadow.camera.top = 80;
+  sunLight.shadow.camera.bottom = -80;
+}
+sunLight.position.set(60, 80, 40);
+scene.add(sunLight);
 
-const dirLight = new THREE.DirectionalLight(0xffedd5, 1.4);
-dirLight.position.set(-12, 18, 10);
-dirLight.castShadow = true;
-dirLight.shadow.mapSize.width = 1024;
-dirLight.shadow.mapSize.height = 1024;
-scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0x6699cc, 0.5); // 設定フィルライト
+fillLight.position.set(-30, 20, -30);
+scene.add(fillLight);
 
-// ダンジョンフロア・壁・松明
-let dungeonFloorMesh = null;
-let dungeonFloorMat = null;
-const dungeonAnimatedObjects = {
-  torches: [],
-  sporeMesh: null,
-  sporePositions: null,
-};
+// =============================================================================
+// 5. Three.js 基本セットアップ & オープンワールド環境
+// =============================================================================
 
-function createDungeonEnvironment() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#1c1f26';
-  ctx.fillRect(0, 0, 512, 512);
+// 地形の高さを返す関数 (決定論的sin/cos重ね合わせ)
+// プレイヤー・敵・アイテムの地形追従に使用
+function getTerrainHeight(x, z) {
+  // 複数のsin/cosを重ね合わせて自然な起伏を表現
+  let h = 0;
+  h += Math.sin(x * 0.018) * Math.cos(z * 0.022) * 3.5;   // メインホイル
+  h += Math.sin(x * 0.045 + 1.2) * Math.sin(z * 0.038) * 1.8; // 中周波
+  h += Math.cos(x * 0.09 + z * 0.07) * 0.9;                // 小起伏
+  h += Math.sin(x * 0.13 + 2.5) * Math.cos(z * 0.11 + 1.0) * 0.4; // 細かい凸凹
+  // プレイヤースポーン地点周辺は平地に滑らかに (r<18は平崺)
+  const r = Math.sqrt(x * x + z * z);
+  const flatten = Math.max(0, 1.0 - Math.max(0, 18 - r) / 18);
+  return h * flatten;
+}
 
-  const tileSize = 64;
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const x = c * tileSize + (r % 2 === 1 ? tileSize / 2 : 0);
-      const y = r * tileSize;
-      const lum = Math.floor(25 + Math.random() * 20);
-      ctx.fillStyle = `rgb(${lum + 5}, ${lum + 8}, ${lum + 12})`;
-      ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+// 地形メッシュ、環境オブジェクトを保持
+let worldTerrainMesh = null;
+const worldStaticObjects = [];
+
+function createOpenWorld() {
+  // ===================================================
+  // 地形メッシュ (500x500, 頂点カラーでゾーン勘分け)
+  // ===================================================
+  const FIELD = 500;
+  const SEG   = 90;  // セグメント数 (负荷バランス)
+
+  const geo = new THREE.PlaneGeometry(FIELD, FIELD, SEG, SEG);
+  geo.rotateX(-Math.PI / 2);
+
+  // 頂点ごとに高さとカラーを設定
+  const positions = geo.attributes.position;
+  const colors    = new Float32Array(positions.count * 3);
+
+  for (let i = 0; i < positions.count; i++) {
+    const vx = positions.getX(i);
+    const vz = positions.getZ(i);
+    const vy = getTerrainHeight(vx, vz);
+    positions.setY(i, vy);
+
+    // ゾーン判定カラー
+    const r = Math.sqrt(vx * vx + vz * vz);
+    let rc, gc, bc;
+    if (r < 80) {
+      // 中央: 草地 (rに応じたノイズも加える)
+      const n = 0.06 + Math.random() * 0.05;
+      rc = 0.20 + n; gc = 0.42 + n; bc = 0.18 + n;
+    } else if (r < 200) {
+      // 中間: 荒野
+      const n = 0.04 + Math.random() * 0.04;
+      rc = 0.46 + n; gc = 0.38 + n; bc = 0.22 + n;
+    } else {
+      // 外周: 廃墙岸場
+      const n = 0.03 + Math.random() * 0.03;
+      rc = 0.28 + n; gc = 0.26 + n; bc = 0.24 + n;
     }
-  }
-  const floorTex = new THREE.CanvasTexture(canvas);
-  floorTex.wrapS = THREE.RepeatWrapping;
-  floorTex.wrapT = THREE.RepeatWrapping;
-  floorTex.repeat.set(12, 12);
-
-  dungeonFloorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85, metalness: 0.15 });
-  dungeonFloorMesh = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), dungeonFloorMat);
-  dungeonFloorMesh.rotation.x = -Math.PI / 2;
-  dungeonFloorMesh.receiveShadow = true;
-  scene.add(dungeonFloorMesh);
-
-  // 外周柱・かがり火
-  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.9 });
-  const fireMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
-
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const radius = 33;
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.6, 6.5, 1.6), pillarMat);
-    pillar.position.set(x, 3.25, z);
-    pillar.castShadow = true;
-    pillar.receiveShadow = true;
-    scene.add(pillar);
-
-    const fireMesh = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 6), fireMat);
-    fireMesh.position.set(x, 4.0, z);
-    scene.add(fireMesh);
-
-    const torchLight = new THREE.PointLight(0xf97316, 1.8, 16);
-    torchLight.position.set(x, 4.0, z);
-    scene.add(torchLight);
-
-    dungeonAnimatedObjects.torches.push({ light: torchLight, fireMesh, baseIntensity: 1.8, phase: i });
+    colors[i * 3]     = Math.min(rc, 1);
+    colors[i * 3 + 1] = Math.min(gc, 1);
+    colors[i * 3 + 2] = Math.min(bc, 1);
   }
 
-  // 浮遊胞子
-  const sporeCount = 80;
-  const sporeGeo = new THREE.BufferGeometry();
-  const sporePositions = new Float32Array(sporeCount * 3);
-  const sporeColors = new Float32Array(sporeCount * 3);
+  positions.needsUpdate = true;
+  geo.computeVertexNormals();
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  for (let i = 0; i < sporeCount; i++) {
-    sporePositions[i * 3] = (Math.random() - 0.5) * 60;
-    sporePositions[i * 3 + 1] = Math.random() * 8 + 0.3;
-    sporePositions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.92,
+    metalness: 0.0,
+  });
 
-    sporeColors[i * 3] = 0.96; sporeColors[i * 3 + 1] = 0.65; sporeColors[i * 3 + 2] = 0.2;
+  worldTerrainMesh = new THREE.Mesh(geo, mat);
+  worldTerrainMesh.receiveShadow = !isIPad;
+  scene.add(worldTerrainMesh);
+
+  // ===================================================
+  // 山峰スカイドーム (広大感演出用の大きな半球)
+  // ===================================================
+  const skyGeo = new THREE.SphereGeometry(280, 16, 8);
+  const skyMat = new THREE.MeshBasicMaterial({
+    color: 0x87ceeb, side: THREE.BackSide, fog: false,
+  });
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+  // ===================================================
+  // 山遠景 (シルエット山脈)
+  // ===================================================
+  const mountainMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 1.0, fog: true });
+  for (let i = 0; i < 14; i++) {
+    const angle = (i / 14) * Math.PI * 2;
+    const dist  = 220 + Math.random() * 30;
+    const h     = 30 + Math.random() * 50;
+    const w     = 28 + Math.random() * 20;
+    const mGeo  = new THREE.ConeGeometry(w, h, 7);
+    const mMesh = new THREE.Mesh(mGeo, mountainMat);
+    mMesh.position.set(Math.cos(angle) * dist, h / 2 - 2, Math.sin(angle) * dist);
+    scene.add(mMesh);
   }
 
-  sporeGeo.setAttribute('position', new THREE.BufferAttribute(sporePositions, 3));
-  sporeGeo.setAttribute('color', new THREE.BufferAttribute(sporeColors, 3));
-  const sporeMat = new THREE.PointsMaterial({ size: 0.28, vertexColors: true, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending });
+  // ===================================================
+  // 環境オブジェクト配置 (InstancedMeshで軽量)
+  // ===================================================
+  placeWorldObjects();
+}
 
-  dungeonAnimatedObjects.sporeMesh = new THREE.Points(sporeGeo, sporeMat);
-  dungeonAnimatedObjects.sporePositions = sporePositions;
-  scene.add(dungeonAnimatedObjects.sporeMesh);
+function placeWorldObjects() {
+  const rng = (min, max) => min + Math.random() * (max - min);
+
+  // ---- 岩 (大・中・小) ----
+  const rockSizes = [
+    { r: 1.8, h: 2.2, count: 70 },
+    { r: 0.9, h: 1.1, count: 80 },
+    { r: 0.45, h: 0.55, count: 80 },
+  ];
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.95 });
+
+  rockSizes.forEach(({ r, h, count }) => {
+    const geo = new THREE.DodecahedronGeometry(r, 0);
+    const mesh = new THREE.InstancedMesh(geo, rockMat, count);
+    mesh.castShadow = !isIPad;
+    mesh.receiveShadow = !isIPad;
+    const dummy = new THREE.Object3D();
+
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist  = 18 + Math.random() * 220;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      const y = getTerrainHeight(x, z);
+      dummy.position.set(x, y + r * 0.4, z);
+      dummy.rotation.set(rng(-0.3, 0.3), rng(0, Math.PI * 2), rng(-0.2, 0.2));
+      dummy.scale.setScalar(rng(0.7, 1.4));
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      worldStaticObjects.push({ x, z, radius: r });
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    scene.add(mesh);
+  });
+
+  // ---- 枯れ木 ----
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.98 });
+  const branchMat = new THREE.MeshStandardMaterial({ color: 0x3a2d20, roughness: 1.0 });
+  const treeCount = 80;
+  const trunkGeo  = new THREE.CylinderGeometry(0.18, 0.28, 3.5, 7);
+  const branchGeo = new THREE.ConeGeometry(0.1, 1.8, 5);
+  const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
+  const branchMesh = new THREE.InstancedMesh(branchGeo, branchMat, treeCount * 3);
+  trunkMesh.castShadow = branchMesh.castShadow = !isIPad;
+  const td = new THREE.Object3D();
+  const bd = new THREE.Object3D();
+
+  for (let i = 0; i < treeCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 22 + Math.random() * 200;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const y = getTerrainHeight(x, z);
+
+    td.position.set(x, y + 1.75, z);
+    td.rotation.y = rng(0, Math.PI * 2);
+    td.scale.setScalar(rng(0.8, 1.5));
+    td.updateMatrix();
+    trunkMesh.setMatrixAt(i, td.matrix);
+
+    for (let b = 0; b < 3; b++) {
+      bd.position.set(
+        x + rng(-0.5, 0.5),
+        y + 2.5 + b * 0.9 + rng(-0.2, 0.2),
+        z + rng(-0.5, 0.5)
+      );
+      bd.rotation.set(rng(-0.2, 0.2), rng(0, Math.PI * 2), rng(-0.2, 0.2));
+      bd.scale.setScalar(rng(0.7, 1.3));
+      bd.updateMatrix();
+      branchMesh.setMatrixAt(i * 3 + b, bd.matrix);
+    }
+    worldStaticObjects.push({ x, z, radius: 0.5 });
+  }
+  trunkMesh.instanceMatrix.needsUpdate = true;
+  branchMesh.instanceMatrix.needsUpdate = true;
+  scene.add(trunkMesh);
+  scene.add(branchMesh);
+
+  // ---- 崩れた石柱 ----
+  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x5a5048, roughness: 0.9 });
+  const pillarGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0); // scaleで形成
+  const pillarMesh = new THREE.InstancedMesh(pillarGeo, pillarMat, 40);
+  pillarMesh.castShadow = !isIPad;
+  const pd = new THREE.Object3D();
+
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 30 + Math.random() * 180;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const y = getTerrainHeight(x, z);
+    const h = rng(1.5, 5.0);
+    pd.position.set(x, y + h / 2, z);
+    pd.rotation.set(rng(-0.15, 0.15), rng(0, Math.PI * 2), rng(-0.1, 0.1));
+    pd.scale.set(rng(0.6, 1.2), h, rng(0.6, 1.2));
+    pd.updateMatrix();
+    pillarMesh.setMatrixAt(i, pd.matrix);
+    worldStaticObjects.push({ x, z, radius: 0.9 });
+  }
+  pillarMesh.instanceMatrix.needsUpdate = true;
+  scene.add(pillarMesh);
+
+  // ---- 廃墙断片 ----
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x6b5d4f, roughness: 0.95 });
+  const wallGeo = new THREE.BoxGeometry(1, 1, 0.4);
+  const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, 30);
+  wallMesh.castShadow = !isIPad;
+  const wd = new THREE.Object3D();
+
+  for (let i = 0; i < 30; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 40 + Math.random() * 160;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const y = getTerrainHeight(x, z);
+    wd.position.set(x, y + rng(1.0, 2.5), z);
+    wd.rotation.set(rng(-0.1, 0.1), rng(0, Math.PI * 2), rng(-0.1, 0.1));
+    wd.scale.set(rng(3.0, 7.0), rng(2.0, 4.0), 1);
+    wd.updateMatrix();
+    wallMesh.setMatrixAt(i, wd.matrix);
+  }
+  wallMesh.instanceMatrix.needsUpdate = true;
+  scene.add(wallMesh);
+
+  // ---- 草 (小さなビルボード)を大量に ----
+  const grassMat = new THREE.MeshBasicMaterial({ color: 0x5a7a40, side: THREE.DoubleSide });
+  const grassGeo = new THREE.PlaneGeometry(0.6, 1.0);
+  const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, 500);
+  grassMesh.castShadow = false;
+  const gd = new THREE.Object3D();
+
+  for (let i = 0; i < 500; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 5 + Math.random() * 180;
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const y = getTerrainHeight(x, z);
+    gd.position.set(x, y + 0.5, z);
+    gd.rotation.y = rng(0, Math.PI * 2);
+    gd.scale.setScalar(rng(0.8, 1.8));
+    gd.updateMatrix();
+    grassMesh.setMatrixAt(i, gd.matrix);
+  }
+  grassMesh.instanceMatrix.needsUpdate = true;
+  scene.add(grassMesh);
 }
 
 function applyStageEnvironment(stage) {
-  scene.fog.color.setHex(stage.fogColor);
-  scene.background.setHex(stage.fogColor);
+  // ステージに応じた靍色・空色変化 (オープンワールド対応版)
+  const fogColors = [
+    0xaac8e0, // Stage 1: 明るい天空
+    0xc08060, // Stage 2: 紅茉色の靈
+    0x8060c0, // Stage 3: 神秘的な紫
+  ];
+  const skyColors = [
+    0x87ceeb, // Stage 1: 青空
+    0xff7744, // Stage 2: 夕燈色
+    0x221133, // Stage 3: 深夜
+  ];
+  const idx = Math.min(stage.id - 1, 2);
+  scene.fog.color.setHex(fogColors[idx]);
+  scene.background.setHex(skyColors[idx]);
   ambientLight.color.setHex(stage.ambientColor);
-
-  dungeonAnimatedObjects.torches.forEach(t => {
-    t.light.color.setHex(stage.torchColor);
-    t.fireMesh.material.color.setHex(stage.torchColor);
-  });
 }
 
 function updateDungeonEnvironment(delta) {
-  dungeonAnimatedObjects.torches.forEach(t => {
-    const flicker = Math.sin(Date.now() * 0.015 + t.phase) * 0.3;
-    t.light.intensity = Math.max(t.baseIntensity + flicker, 0.8);
-  });
-
-  if (dungeonAnimatedObjects.sporeMesh && dungeonAnimatedObjects.sporePositions) {
-    const pos = dungeonAnimatedObjects.sporePositions;
-    for (let i = 0; i < pos.length / 3; i++) {
-      pos[i * 3 + 1] += delta * 0.35;
-      if (pos[i * 3 + 1] > 8.5) pos[i * 3 + 1] = 0.3;
-    }
-    dungeonAnimatedObjects.sporeMesh.geometry.attributes.position.needsUpdate = true;
-  }
+  // オープンワールド化でトーチほかのアニメは不要になったので空関数に
 }
 
-createDungeonEnvironment();
+createOpenWorld();
 
 // =============================================================================
 // 6. プレイヤーキャラクター生成 (HP/MP, 3段コンボ, 魔法詠唱)
@@ -1400,12 +1571,16 @@ class Player {
       this.walkCycle += delta * 2;
     }
 
-    // フィールド境界制限
+    // フィールド境界制限 (オープンワールド: 240m)
     const distCenter = Math.sqrt(this.group.position.x ** 2 + this.group.position.z ** 2);
-    if (distCenter > 33.5) {
-      this.group.position.x = (this.group.position.x / distCenter) * 33.5;
-      this.group.position.z = (this.group.position.z / distCenter) * 33.5;
+    if (distCenter > 240) {
+      this.group.position.x = (this.group.position.x / distCenter) * 240;
+      this.group.position.z = (this.group.position.z / distCenter) * 240;
     }
+
+    // 地形高さ追従
+    const th = getTerrainHeight(this.group.position.x, this.group.position.z);
+    this.group.position.y = th;
 
     // ダッシュ残像の更新
     this.updateDashTrails(delta);
@@ -2696,8 +2871,22 @@ class EnemyManager {
       const e = this.enemies[i];
       if (e.isDead) {
         this.enemies.splice(i, 1);
+        continue;
+      }
+      // 距離ベース表示・更新の最適化
+      const distToPlayer = e.group.position.distanceTo(playerPos);
+      if (distToPlayer > 100) {
+        // 100m超: 非表示 + AI停止
+        e.group.visible = false;
       } else {
-        e.update(delta, playerPos);
+        e.group.visible = true;
+        if (distToPlayer < 80) {
+          // 80m以内: 通常更新
+          e.update(delta, playerPos);
+          // 地形追従
+          const tx = e.group.position.x, tz = e.group.position.z;
+          e.group.position.y = getTerrainHeight(tx, tz);
+        }
         if (e.isBoss) updateBossHpBar(e);
       }
     }
@@ -2719,18 +2908,19 @@ class EnemyManager {
     else if (rand < 0.75) enemy = new GhostEnemy();
     else enemy = new GoblinEnemy();
 
-    enemy.group.position.set(x, 0, z);
+    enemy.group.position.set(x, getTerrainHeight(x, z), z);
     scene.add(enemy.group);
     this.enemies.push(enemy);
   }
 
   spawnBoss(type, playerPos) {
     const angle = Math.random() * Math.PI * 2;
-    const x = playerPos.x + Math.cos(angle) * 16.0;
-    const z = playerPos.z + Math.sin(angle) * 16.0;
+    const dist  = 20.0;
+    const x = playerPos.x + Math.cos(angle) * dist;
+    const z = playerPos.z + Math.sin(angle) * dist;
 
     const boss = (type === 'king_goblin') ? new KingGoblinEnemy() : new DemonEnemy();
-    boss.group.position.set(x, 0, z);
+    boss.group.position.set(x, getTerrainHeight(x, z), z);
     scene.add(boss.group);
     this.enemies.push(boss);
 
@@ -2812,15 +3002,15 @@ class ItemManager {
       if (rand <= 0) { selected = ITEM_TYPES[k]; break; }
     }
 
-    // プレイヤーから5〜16ユニット離れた場所にスポーン
+    // プレイヤーから 8〜40m の範囲にスポーン (オープンワールド対応)
     const angle = Math.random() * Math.PI * 2;
-    const dist = 5 + Math.random() * 11;
-    const x = Math.max(-32, Math.min(32, playerPos.x + Math.cos(angle) * dist));
-    const z = Math.max(-32, Math.min(32, playerPos.z + Math.sin(angle) * dist));
+    const dist  = 8 + Math.random() * 32;
+    const x = playerPos.x + Math.cos(angle) * dist;
+    const z = playerPos.z + Math.sin(angle) * dist;
+    const y = getTerrainHeight(x, z) + 1.0;
 
-    // 3Dメッシュを作成 (ボトル形状 = 小さなカプセル)
     const group = new THREE.Group();
-    group.position.set(x, 1.0, z);
+    group.position.set(x, y, z);
 
     // ボトル本体
     const bodyGeo = new THREE.SphereGeometry(0.25, 8, 8);
@@ -3377,6 +3567,124 @@ window.addEventListener('resize', () => {
 });
 
 // =============================================================================
+// 14.5 ミニマップ (レーダー表示)
+// =============================================================================
+class MinimapRenderer {
+  constructor() {
+    this.canvas  = document.getElementById('minimap-canvas');
+    this.ctx     = this.canvas ? this.canvas.getContext('2d') : null;
+    this.size    = 130;         // canvas解像度
+    this.range   = 120;         // 表示範囲 (ワールド単位)
+    this.frame   = 0;           // フレームカウンタ
+    this.updateEvery = 8;       // 8フレームに1回更新 (軽量化)
+  }
+
+  worldToMap(wx, wz, playerX, playerZ) {
+    // プレイヤーを中心にワールド座標をマップ座標に変換
+    const half = this.size / 2;
+    const scale = this.size / this.range;
+    return {
+      mx: half + (wx - playerX) * scale,
+      mz: half + (wz - playerZ) * scale,
+    };
+  }
+
+  update(playerPos) {
+    if (!this.ctx || state.mode === GAME_MODE.TITLE) return;
+    this.frame++;
+    if (this.frame % this.updateEvery !== 0) return;
+
+    const ctx  = this.ctx;
+    const S    = this.size;
+    const px   = playerPos.x;
+    const pz   = playerPos.z;
+
+    // 背景 (ラジアルグラデーション)
+    ctx.clearRect(0, 0, S, S);
+    const grad = ctx.createRadialGradient(S/2, S/2, 0, S/2, S/2, S/2);
+    grad.addColorStop(0,   'rgba( 20, 36, 58, 0.92)');
+    grad.addColorStop(0.7, 'rgba( 10, 18, 30, 0.95)');
+    grad.addColorStop(1,   'rgba(  5, 10, 18, 0.98)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(S/2, S/2, S/2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // グリッドラインを薄く描画
+    ctx.strokeStyle = 'rgba(56,189,248,0.08)';
+    ctx.lineWidth   = 0.5;
+    for (let i = 0; i < 4; i++) {
+      const p = (i / 4) * S;
+      ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, S); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(S, p); ctx.stroke();
+    }
+
+    // 同心円
+    ctx.strokeStyle = 'rgba(56,189,248,0.10)';
+    [0.25, 0.5, 0.75].forEach(r => {
+      ctx.beginPath();
+      ctx.arc(S/2, S/2, S/2 * r, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
+    // ---- 静的オブジェクト (薄グレー点) ----
+    ctx.fillStyle = 'rgba(120,120,120,0.35)';
+    worldStaticObjects.forEach(obj => {
+      const { mx, mz } = this.worldToMap(obj.x, obj.z, px, pz);
+      if (mx < 0 || mx > S || mz < 0 || mz > S) return;
+      ctx.beginPath();
+      ctx.arc(mx, mz, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // ---- アイテム (緑点) ----
+    ctx.fillStyle = '#22c55e';
+    itemManager.items.forEach(item => {
+      const { mx, mz } = this.worldToMap(item.mesh.position.x, item.mesh.position.z, px, pz);
+      if (mx < 0 || mx > S || mz < 0 || mz > S) return;
+      ctx.beginPath();
+      ctx.arc(mx, mz, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // ---- 敵 (赤点 / ボスは大きく黄色) ----
+    enemyManager.enemies.forEach(e => {
+      if (e.isDead || e.isDying || !e.group.visible) return;
+      const { mx, mz } = this.worldToMap(e.group.position.x, e.group.position.z, px, pz);
+      if (mx < 0 || mx > S || mz < 0 || mz > S) return;
+      ctx.fillStyle = e.isBoss ? '#facc15' : '#ef4444';
+      ctx.beginPath();
+      ctx.arc(mx, mz, e.isBoss ? 4.0 : 2.0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // ---- プレイヤー (白三角) ----
+    const rotY = player.group.rotation.y;
+    const tSize = 5;
+    ctx.save();
+    ctx.translate(S/2, S/2);
+    ctx.rotate(-rotY + Math.PI); // カメラ方向に合わせる
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, -tSize);
+    ctx.lineTo(-tSize * 0.7, tSize * 0.7);
+    ctx.lineTo(tSize  * 0.7, tSize * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // ---- 外枠の円をくっきりと ----
+    ctx.strokeStyle = 'rgba(56,189,248,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(S/2, S/2, S/2 - 1, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// =============================================================================
 // 15. メインゲームループ初期化 & 実行
 // =============================================================================
 const magicSystem = new MagicSystem();
@@ -3386,6 +3694,7 @@ const stageManager = new StageManager();
 const cameraController = new CameraController(camera, player);
 const itemManager = new ItemManager();
 const shopUI = new ShopUI(player);
+const minimap = new MinimapRenderer();
 
 setupControls(player);
 updateHUD();
@@ -3417,6 +3726,9 @@ function animate() {
     magicSystem.update(rawDelta);
     itemManager.update(delta, player.group.position); // 回復アイテム更新
   }
+
+  // ミニマップ更新 (8フレームに1回)
+  minimap.update(player.group.position);
 
   cameraController.update(rawDelta);
   renderer.render(scene, camera);

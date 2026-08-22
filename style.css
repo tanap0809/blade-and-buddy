@@ -1159,3 +1159,37 @@ html, body {
   20%, 60% { transform: translateX(-6px); }
   40%, 80% { transform: translateX(6px); }
 }
+
+/* =============================================================================
+   ミニマップ (オープンワールドレーダー)
+   ============================================================================= */
+.minimap-container {
+  position: absolute;
+  top: calc(68px + var(--safe-area-inset-top));
+  left: 12px;
+  width: 134px;
+  background: rgba(4, 8, 16, 0.78);
+  border: 1.5px solid rgba(56, 189, 248, 0.45);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.18), inset 0 0 8px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 12;
+  backdrop-filter: blur(4px);
+}
+
+#minimap-canvas {
+  display: block;
+  border-radius: 8px;
+  width: 126px;
+  height: 126px;
+}
+
+.minimap-label {
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: rgba(56, 189, 248, 0.7);
+  padding-top: 3px;
+}
