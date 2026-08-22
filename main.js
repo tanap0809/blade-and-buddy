@@ -1207,6 +1207,138 @@ class SoundManager {
     });
   }
 
+  // 🐾 各ペット専用の鳴き声・雄たけびボイス合成
+  playPetVoice(type = 'fairy') {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const sfx = this.sfxGain;
+
+    if (type === 'gorilla') {
+      // 🦍 ゴリラ: 重厚な雄たけび「ウオオオッ！！」
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.linearRampToValueAtTime(180, now + 0.1);
+      osc.frequency.exponentialRampToValueAtTime(45, now + 0.45);
+      gain.gain.setValueAtTime(0.9, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+      osc.connect(gain);
+      gain.connect(sfx);
+      osc.start(now);
+      osc.stop(now + 0.48);
+
+    } else if (type === 'lion') {
+      // 🦁 ライオン: 百獣の王の咆哮「ガオーーッ！！」
+      const bufferSize = this.ctx.sampleRate * 0.45;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.value = 3.0;
+      filter.frequency.setValueAtTime(650, now);
+      filter.frequency.exponentialRampToValueAtTime(140, now + 0.45);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(1.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(sfx);
+      noise.start(now);
+      noise.stop(now + 0.48);
+
+    } else if (type === 'dog') {
+      // 🐶 イヌ: リアルで元気な「ワン！ワン！」(2連打)
+      [0, 0.12].forEach((offset) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(480, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(190, now + offset + 0.09);
+        gain.gain.setValueAtTime(0.85, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + offset + 0.09);
+        osc.connect(gain);
+        gain.connect(sfx);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.1);
+      });
+
+    } else if (type === 'pig') {
+      // 🐷 ブタ: 愛嬌のある「ブヒィィッ！」
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.linearRampToValueAtTime(580, now + 0.12);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.35);
+      gain.gain.setValueAtTime(0.8, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.connect(gain);
+      gain.connect(sfx);
+      osc.start(now);
+      osc.stop(now + 0.38);
+
+    } else if (type === 'cheetah') {
+      // 🐆 チーター: 鋭い威嚇「シャァァッ！！」
+      const bufferSize = this.ctx.sampleRate * 0.3;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(1800, now);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.9, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(sfx);
+      noise.start(now);
+      noise.stop(now + 0.32);
+
+    } else if (type === 'unicorn') {
+      // 🦄 ユニコーン: 聖なるいななき「ヒヒィィン！✨」
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(650, now);
+      osc.frequency.exponentialRampToValueAtTime(1450, now + 0.25);
+      gain.gain.setValueAtTime(0.7, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.connect(gain);
+      gain.connect(sfx);
+      osc.start(now);
+      osc.stop(now + 0.38);
+
+    } else {
+      // 🧚 フェアリー: 澄んだ「ピピピーッ！✨」
+      const notes = [1046.5, 1318.5, 1567.98];
+      notes.forEach((f, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now + idx * 0.06);
+        gain.gain.setValueAtTime(0.45, now + idx * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.06 + 0.15);
+        osc.connect(gain);
+        gain.connect(sfx);
+        osc.start(now + idx * 0.06);
+        osc.stop(now + idx * 0.06 + 0.16);
+      });
+    }
+  }
+
   playCoin() {
     if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
@@ -2641,8 +2773,38 @@ class Player {
   }
 }
 
+// ペットの頭上にマンガ風吹き出しを表示する関数
+function showPetVoiceBubble(worldPos, text) {
+  if (!worldPos || !text) return;
+  const screenPos = worldPos.clone().project(camera);
+  const x = ((screenPos.x + 1) * window.innerWidth) / 2;
+  const y = ((-screenPos.y + 1) * window.innerHeight) / 2;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'pet-voice-bubble';
+  bubble.innerText = text;
+  bubble.style.left = `${x}px`;
+  bubble.style.top = `${y - 25}px`;
+  document.body.appendChild(bubble);
+
+  setTimeout(() => {
+    if (bubble.parentNode) bubble.parentNode.removeChild(bubble);
+  }, 900);
+}
+
+// 各ペットの鳴き声・技テキスト定義
+const PET_ATTACK_VOICES = {
+  gorilla: { voice: 'ウオオオッ！！🦍', dmg: 35, range: 12.0 },
+  lion:    { voice: 'ガオーーッ！！🦁', dmg: 32, range: 14.0 },
+  dog:     { voice: 'ワンワンッ！🐶', dmg: 24, range: 12.0 },
+  pig:     { voice: 'ブヒィィッ！🐷', dmg: 26, range: 12.0 },
+  cheetah: { voice: 'シャァァッ！🐆', dmg: 30, range: 16.0 },
+  unicorn: { voice: 'ヒヒィィン！🦄', dmg: 34, range: 15.0 },
+  fairy:   { voice: 'ぴぴーっ！🧚',   dmg: 22, range: 13.0 },
+};
+
 // =============================================================================
-// 6.4 バディペットシステム (BuddyPet & PetManager)
+// 6.4 バディペットシステム (BuddyPet & PetManager - 打撃系アクション & ボイス)
 // =============================================================================
 class BuddyPet {
   constructor(player, petType = 'fairy', slotIndex = 0) {
@@ -2650,6 +2812,7 @@ class BuddyPet {
     this.petType = petType;
     this.slotIndex = slotIndex;
     this.petData = ITEMS_DATA.pets[petType] || ITEMS_DATA.pets.fairy;
+    this.voiceData = PET_ATTACK_VOICES[petType] || PET_ATTACK_VOICES.fairy;
 
     this.group = new THREE.Group();
     const initOffset = CONFIG.petOffsets[slotIndex] || CONFIG.petOffsets[0];
@@ -2659,6 +2822,14 @@ class BuddyPet {
     this.hoverTime = Math.random() * 10;
     this.attackTimer = Math.random() * 1.5;
     this.attackCooldown = this.petData.attackInterval || 2.5;
+
+    // 近接打撃アタック制御
+    this.isAttacking = false;
+    this.attackState = 'idle'; // 'charge', 'strike', 'return'
+    this.attackProgress = 0;
+    this.targetEnemy = null;
+    this.attackStartPos = new THREE.Vector3();
+    this.attackTargetPos = new THREE.Vector3();
 
     this.buildMesh();
   }
@@ -2677,69 +2848,107 @@ class BuddyPet {
     if (type === 'gorilla') {
       const furMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.8 });
       const skinMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.6 });
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.42), furMat);
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 0.45), furMat);
       this.group.add(this.body);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.28), furMat);
-      head.position.set(0, 0.32, 0.08);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.3), furMat);
+      head.position.set(0, 0.35, 0.1);
       this.body.add(head);
+
+      // ゴリラの強力な腕
+      const armGeo = new THREE.BoxGeometry(0.2, 0.45, 0.2);
+      this.lArm = new THREE.Mesh(armGeo, furMat);
+      this.lArm.position.set(-0.35, -0.05, 0.1);
+      this.body.add(this.lArm);
+      this.rArm = new THREE.Mesh(armGeo, furMat);
+      this.rArm.position.set(0.35, -0.05, 0.1);
+      this.body.add(this.rArm);
+
     } else if (type === 'lion') {
       const furMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 });
       const maneMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 });
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.48), furMat);
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.52), furMat);
       this.group.add(this.body);
-      const mane = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.28), maneMat);
+      const mane = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 0.32), maneMat);
       mane.position.set(0, 0.15, 0.16);
       this.body.add(mane);
+
     } else if (type === 'pig') {
       const pinkMat = new THREE.MeshStandardMaterial({ color: 0xfb7185, roughness: 0.5 });
-      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), pinkMat);
+      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), pinkMat);
       this.group.add(this.body);
-      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 8), pinkMat);
+      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.09, 8), pinkMat);
       snout.rotation.x = Math.PI / 2;
-      snout.position.set(0, 0, 0.28);
+      snout.position.set(0, 0, 0.32);
       this.body.add(snout);
+
     } else if (type === 'dog') {
       const dogMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 });
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.32, 0.46), dogMat);
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.35, 0.5), dogMat);
       this.group.add(this.body);
+      // 垂れ耳
+      const earGeo = new THREE.BoxGeometry(0.08, 0.18, 0.12);
+      const lEar = new THREE.Mesh(earGeo, dogMat);
+      lEar.position.set(-0.22, 0.2, 0.1);
+      this.body.add(lEar);
+      const rEar = new THREE.Mesh(earGeo, dogMat);
+      rEar.position.set(0.22, 0.2, 0.1);
+      this.body.add(rEar);
+
     } else if (type === 'cheetah') {
       const chMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.52), chMat);
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.56), chMat);
       this.group.add(this.body);
+
     } else if (type === 'unicorn') {
       const uniMat = new THREE.MeshStandardMaterial({ color: 0xfdf4ff, roughness: 0.3 });
-      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.48), uniMat);
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.52), uniMat);
       this.group.add(this.body);
-      const hornMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.8 });
-      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 6), hornMat);
-      horn.position.set(0, 0.4, 0.2);
-      horn.rotation.x = 0.3;
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.9 });
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.35, 6), hornMat);
+      horn.position.set(0, 0.45, 0.25);
+      horn.rotation.x = 0.4;
       this.body.add(horn);
+
     } else {
       // フェアリー (妖精)
       const fairyMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, emissive: 0xec4899, emissiveIntensity: 0.4, roughness: 0.2 });
-      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), fairyMat);
+      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), fairyMat);
       this.group.add(this.body);
       const wingMat = new THREE.MeshStandardMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.65, roughness: 0.1 });
-      const lWing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.02), wingMat);
-      lWing.position.set(-0.25, 0.08, -0.1);
+      const lWing = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.02), wingMat);
+      lWing.position.set(-0.28, 0.08, -0.1);
       lWing.rotation.y = 0.4;
       this.body.add(lWing);
-      const rWing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.02), wingMat);
-      rWing.position.set(0.25, 0.08, -0.1);
+      const rWing = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.02), wingMat);
+      rWing.position.set(0.28, 0.08, -0.1);
       rWing.rotation.y = -0.4;
       this.body.add(rWing);
+
+      // マジカルピコピコハンマー
+      this.hammer = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.35, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfde047, emissive: 0xeab308, emissiveIntensity: 0.5 })
+      );
+      this.hammer.position.set(0.28, 0.1, 0.2);
+      this.hammer.rotation.z = Math.PI / 3;
+      this.body.add(this.hammer);
     }
 
     // 発光オーラ
-    const light = new THREE.PointLight(bulletColor, 0.6, 3.0);
-    light.position.set(0, 0, 0);
-    this.group.add(light);
+    this.light = new THREE.PointLight(bulletColor, 0.6, 3.0);
+    this.light.position.set(0, 0, 0);
+    this.group.add(this.light);
   }
 
   update(delta) {
     if (state.mode === GAME_MODE.GAMEOVER || state.mode === GAME_MODE.TITLE) return;
 
+    if (this.isAttacking) {
+      this.updateMeleeAttack(delta);
+      return;
+    }
+
+    // 通常時の追従ホバリング
     this.hoverTime += delta * 3.5;
     const targetOffset = (CONFIG.petOffsets[this.slotIndex] || CONFIG.petOffsets[0]).clone();
     targetOffset.y += Math.sin(this.hoverTime) * 0.22;
@@ -2759,9 +2968,9 @@ class BuddyPet {
   }
 
   tryAttack() {
-    if (state.mode !== GAME_MODE.PLAYING) return;
+    if (state.mode !== GAME_MODE.PLAYING || this.isAttacking) return;
     let closestEnemy = null;
-    let closestDist = CONFIG.petAttackRange || 14.0;
+    let closestDist = this.voiceData.range || 14.0;
 
     enemyManager.enemies.forEach(e => {
       if (e.isDead || e.isDying) return;
@@ -2773,49 +2982,147 @@ class BuddyPet {
     });
 
     if (closestEnemy) {
-      this.shootBullet(closestEnemy);
+      this.startMeleeAttack(closestEnemy);
     }
   }
 
-  shootBullet(targetEnemy) {
-    const startPos = this.group.position.clone();
-    const targetPos = targetEnemy.group.position.clone().add(new THREE.Vector3(0, 0.8, 0));
-    const dir = new THREE.Vector3().subVectors(targetPos, startPos).normalize();
+  // 💥 打撃系近接アタック開始 (鳴き声・吹き出し・突撃)
+  startMeleeAttack(targetEnemy) {
+    this.isAttacking = true;
+    this.attackState = 'charge';
+    this.attackProgress = 0;
+    this.targetEnemy = targetEnemy;
+    this.attackStartPos.copy(this.group.position);
+    this.attackTargetPos.copy(targetEnemy.group.position).add(new THREE.Vector3(0, 0.6, 0));
 
-    const bulletColor = this.petData.bulletColor || 0x38bdf8;
-    const geo = new THREE.SphereGeometry(0.18, 6, 6);
-    const mat = new THREE.MeshBasicMaterial({ color: bulletColor });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(startPos);
-    scene.add(mesh);
+    // 🐾 鳴き声・雄たけびボイスを再生！
+    soundManager.playPetVoice(this.petType);
 
-    let life = 1.0;
-    const speed = 20.0;
-    const interval = setInterval(() => {
-      life -= 0.04;
-      mesh.position.addScaledVector(dir, speed * 0.04);
+    // 💬 画面上にマンガ風吹き出しボイスをポップアップ！
+    showPetVoiceBubble(this.group.position, this.voiceData.voice);
 
-      if (targetEnemy && !targetEnemy.isDead) {
-        if (mesh.position.distanceTo(targetEnemy.group.position) < 1.2) {
-          targetEnemy.takeDamage(18, dir, null, false);
-          soundManager.playHitImpact(false);
-          clearInterval(interval);
-          scene.remove(mesh);
-          return;
-        }
+    // 敵の方を向く
+    const dir = new THREE.Vector3().subVectors(this.attackTargetPos, this.group.position).normalize();
+    this.group.rotation.y = Math.atan2(dir.x, dir.z);
+  }
+
+  updateMeleeAttack(delta) {
+    const type = this.petType;
+
+    if (this.attackState === 'charge') {
+      // 敵に向かって猛ダッシュ突撃！
+      this.attackProgress += delta * 4.5;
+      const t = Math.min(this.attackProgress, 1.0);
+
+      // 敵の位置をリアルタイム追従（ターゲットが動いても当たる）
+      if (this.targetEnemy && !this.targetEnemy.isDead) {
+        this.attackTargetPos.copy(this.targetEnemy.group.position).add(new THREE.Vector3(0, 0.6, 0));
       }
 
-      if (life <= 0) {
-        clearInterval(interval);
-        scene.remove(mesh);
+      // 突進軌道 (ゴリラはハイジャンプ、ブタはお尻宙返り、その他は直線ダッシュ)
+      const currentPos = new THREE.Vector3().lerpVectors(this.attackStartPos, this.attackTargetPos, t);
+      if (type === 'gorilla') {
+        currentPos.y += Math.sin(t * Math.PI) * 2.8; // 大ジャンプ
+        if (this.lArm) this.lArm.rotation.x = -Math.PI * 0.8 * (1.0 - t);
+        if (this.rArm) this.rArm.rotation.x = -Math.PI * 0.8 * (1.0 - t);
+      } else if (type === 'pig') {
+        currentPos.y += Math.sin(t * Math.PI) * 1.5;
+        this.group.rotation.x = t * Math.PI * 2; // 宙返り
+      } else if (type === 'dog') {
+        this.group.rotation.z = Math.sin(t * Math.PI * 4) * 0.4; // ジグザグ
+      } else if (type === 'unicorn') {
+        this.group.rotation.x = 0.2; // 角を前に突き出す
       }
-    }, 40);
+
+      this.group.position.copy(currentPos);
+
+      if (t >= 1.0) {
+        // 着弾！打撃ヒット
+        this.performStrike();
+        this.attackState = 'return';
+        this.attackProgress = 0;
+      }
+
+    } else if (this.attackState === 'return') {
+      // 元の追従位置へスーッと帰還
+      this.attackProgress += delta * 3.2;
+      const t = Math.min(this.attackProgress, 1.0);
+
+      const targetOffset = (CONFIG.petOffsets[this.slotIndex] || CONFIG.petOffsets[0]).clone();
+      const returnPos = this.player.group.position.clone().add(targetOffset);
+      returnPos.y = Math.max(returnPos.y, getTerrainHeight(returnPos.x, returnPos.z) + 1.2);
+
+      this.group.position.lerp(returnPos, t);
+      this.group.rotation.set(0, this.player.group.rotation.y, 0);
+
+      if (t >= 1.0) {
+        this.isAttacking = false;
+        this.attackState = 'idle';
+        this.targetEnemy = null;
+      }
+    }
+  }
+
+  // 🥊 打撃インパクトの適用 (ダメージ・エフェクト・衝撃音)
+  performStrike() {
+    const type = this.petType;
+    const enemy = this.targetEnemy;
+    const dmg = this.voiceData.dmg || 28;
+    const hitDir = new THREE.Vector3().subVectors(this.attackTargetPos, this.attackStartPos).normalize();
+
+    soundManager.playHitImpact(true);
+    cameraController.shake(type === 'gorilla' ? 0.35 : 0.2);
+
+    // ペット固有のヒットエフェクト
+    if (type === 'gorilla') {
+      // 地面ゴリラスマッシュ衝撃波リング
+      const smashRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.3, 3.2, 16),
+        new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending })
+      );
+      smashRing.rotation.x = -Math.PI / 2;
+      smashRing.position.copy(this.group.position);
+      smashRing.position.y = getTerrainHeight(smashRing.position.x, smashRing.position.z) + 0.1;
+      scene.add(smashRing);
+      let sLife = 0.35;
+      const sInt = setInterval(() => {
+        sLife -= 0.04;
+        smashRing.scale.multiplyScalar(1.12);
+        smashRing.material.opacity = sLife / 0.35;
+        if (sLife <= 0) { clearInterval(sInt); scene.remove(smashRing); }
+      }, 40);
+
+    } else if (type === 'lion') {
+      // 灼熱爪痕エフェクト
+      soundManager.playZubattoSlash(1);
+
+    } else if (type === 'unicorn') {
+      // 星屑スパーク
+      for (let i = 0; i < 8; i++) {
+        const star = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+        star.position.copy(this.group.position);
+        scene.add(star);
+        const sVel = new THREE.Vector3((Math.random() - 0.5) * 8, Math.random() * 6 + 2, (Math.random() - 0.5) * 8);
+        let starLife = 0.4;
+        const starInt = setInterval(() => {
+          starLife -= 0.04;
+          star.position.addScaledVector(sVel, 0.04);
+          star.scale.multiplyScalar(0.9);
+          if (starLife <= 0) { clearInterval(starInt); scene.remove(star); }
+        }, 40);
+      }
+    }
+
+    if (enemy && !enemy.isDead && !enemy.isDying) {
+      enemy.takeDamage(dmg, hitDir, null, type === 'gorilla');
+    }
   }
 
   destroy() {
     scene.remove(this.group);
   }
 }
+
 
 class PetManager {
   constructor(player) {

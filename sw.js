@@ -3,7 +3,7 @@
  * Offline Cache & PWA Support
  */
 
-const CACHE_NAME = 'blade-and-buddy-v21';
+const CACHE_NAME = 'blade-and-buddy-v22';
 
 const ASSETS_TO_CACHE = [
   './',

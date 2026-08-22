@@ -1522,3 +1522,58 @@ html, body {
   .dash-btn { width: 64px; height: 64px; }
   .attack-btn { width: 84px; height: 84px; }
 }
+
+/* =============================================================================
+   ペット鳴き声吹き出し (マンガ風ボイスポップアップ)
+   ============================================================================= */
+.pet-voice-bubble {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  border: 2px solid #f59e0b;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.5), 0 0 10px rgba(0, 0, 0, 0.8);
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.9rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+  animation: petBubblePop 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.pet-voice-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0;
+  border-style: solid;
+  border-color: #f59e0b transparent transparent;
+}
+
+@keyframes petBubblePop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -115%) scale(1.18);
+  }
+  35% {
+    transform: translate(-50%, -105%) scale(1.0);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -115%) scale(1.0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -140%) scale(0.85);
+  }
+}
+
