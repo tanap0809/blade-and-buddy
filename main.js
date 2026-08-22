@@ -168,6 +168,229 @@ const MAGIC_DATA = {
   },
 };
 
+// ショップ商品データ (衣装, 頭部, 刀スキン, ペット)
+const ITEMS_DATA = {
+  outfits: {
+    default: {
+      id: 'default',
+      name: 'ロイヤルブルー騎士',
+      price: 0,
+      desc: '王国騎士団の正装クロークと重装甲プレートアーマー。',
+      icon: '🛡️',
+      cloakColor: 0x1d4ed8,
+      armorColor: 0x475569,
+      visorColor: 0x38bdf8,
+    },
+    crimson: {
+      id: 'crimson',
+      name: 'クリムゾンバーサーカー',
+      price: 50,
+      desc: '紅蓮の闘志を宿した真紅の鎧。攻撃的な装飾が施されている。',
+      icon: '🔴',
+      cloakColor: 0xdc2626,
+      armorColor: 0x7f1d1d,
+      visorColor: 0xfca5a5,
+    },
+    shadow: {
+      id: 'shadow',
+      name: 'シャドウアサシン',
+      price: 100,
+      desc: '暗闇に溶け込む漆黒のステルスアーマー。',
+      icon: '🥷',
+      cloakColor: 0x1e293b,
+      armorColor: 0x0f172a,
+      visorColor: 0xa855f7,
+    },
+    gold: {
+      id: 'gold',
+      name: '黄金聖騎士 (ゴールド)',
+      price: 200,
+      desc: '純金の輝きを放つ最高峰の栄誉プレートアーマー。',
+      icon: '👑',
+      cloakColor: 0xd97706,
+      armorColor: 0xf59e0b,
+      visorColor: 0xfef08a,
+    },
+    neon_green: {
+      id: 'neon_green',
+      name: 'エメラルドガーディアン',
+      price: 120,
+      desc: '生命力を高める神秘的なエメラルドグリーンアーマー。',
+      icon: '🟢',
+      cloakColor: 0x059669,
+      armorColor: 0x064e3b,
+      visorColor: 0x6ee7b7,
+    },
+  },
+  heads: {
+    none: {
+      id: 'none',
+      name: '標準バイザーヘルメット',
+      price: 0,
+      desc: '王道スタイルの標準バイザー付き兜。',
+      icon: '👤',
+    },
+    sunglasses: {
+      id: 'sunglasses',
+      name: 'クールサングラス',
+      price: 40,
+      desc: '暗視アシストを内蔵したスタイリッシュなサングラス。',
+      icon: '🕶️',
+    },
+    ninja_band: {
+      id: 'ninja_band',
+      name: '忍のハチマキ',
+      price: 80,
+      desc: '風になびく真紅のハチマキ。集中力と敏捷性を高める。',
+      icon: '🧣',
+    },
+    samurai_helm: {
+      id: 'samurai_helm',
+      name: 'サムライ前立て兜',
+      price: 150,
+      desc: '黄金の三日月前立てが堂々と輝く伝統の武者兜。',
+      icon: '⛩️',
+    },
+    cyber_horns: {
+      id: 'cyber_horns',
+      name: 'サイバーホーン (魔角)',
+      price: 180,
+      desc: '発光するネオンエネルギーを放つサイバー角アンテナ。',
+      icon: '😈',
+    },
+  },
+  swords: {
+    default: {
+      id: 'default',
+      name: 'サイバーブレード',
+      price: 0,
+      desc: '青く発光する標準的な高周波エナジー刀。',
+      icon: '🗡️',
+      bladeColor: 0xdbeafe,
+      emissive: 0x2563eb,
+      slashColor: 0x93c5fd,
+      tag: 'NORMAL',
+    },
+    flame: {
+      id: 'flame',
+      name: '焔刀・紅蓮 (炎)',
+      price: 80,
+      desc: '灼熱の炎を常にまとい、火の粉が舞い散る業火の太刀。',
+      icon: '🔥',
+      bladeColor: 0xfecaca,
+      emissive: 0xef4444,
+      slashColor: 0xf87171,
+      tag: '炎属性',
+    },
+    thunder: {
+      id: 'thunder',
+      name: '雷刃・鳴神 (雷)',
+      price: 120,
+      desc: '激しい青白のスパークと雷光を放つ迅雷の太刀。',
+      icon: '⚡',
+      bladeColor: 0xfef08a,
+      emissive: 0xeab308,
+      slashColor: 0xfacc15,
+      tag: '雷属性',
+    },
+    void: {
+      id: 'void',
+      name: '虚空・冥府 (闇)',
+      price: 180,
+      desc: '冥府の妖気とダークマターをまとう紫紺の妖刀。',
+      icon: '🔮',
+      bladeColor: 0xe9d5ff,
+      emissive: 0xa855f7,
+      slashColor: 0xc084fc,
+      tag: '闇属性',
+    },
+    sunlight: {
+      id: 'sunlight',
+      name: '聖剣ソラリス (光)',
+      price: 250,
+      desc: '神聖な黄金の光粒子を放つ伝説の聖剣。',
+      icon: '✨',
+      bladeColor: 0xfef9c3,
+      emissive: 0xf59e0b,
+      slashColor: 0xfde047,
+      tag: '光属性',
+    },
+  },
+  pets: {
+    fairy: {
+      id: 'fairy',
+      name: 'フェアリー (妖精)',
+      price: 0,
+      desc: 'ピンクの魔導弾で定期的にバランスよく援護射撃。',
+      icon: '🧚',
+      attackInterval: 2.5,
+      bulletColor: 0xf472b6,
+      tag: 'バランス型',
+    },
+    gorilla: {
+      id: 'gorilla',
+      name: 'マッスルゴリラ',
+      price: 80,
+      desc: '重力岩石弾を投げつけ、敵を粉砕する剛力バディ。',
+      icon: '🦍',
+      attackInterval: 3.0,
+      bulletColor: 0x78716c,
+      tag: '高威力岩石',
+    },
+    lion: {
+      id: 'lion',
+      name: 'ブレイズライオン',
+      price: 120,
+      desc: '百獣の王の咆哮とともに灼熱の火球を放ち敵を焼き尽くす。',
+      icon: '🦁',
+      attackInterval: 2.4,
+      bulletColor: 0xef4444,
+      tag: '灼熱の火球',
+    },
+    pig: {
+      id: 'pig',
+      name: 'ピギーラッキー',
+      price: 60,
+      desc: '愛らしいピンクの幸運ブタ。バウンドするマッドボムを投擲。',
+      icon: '🐷',
+      attackInterval: 2.8,
+      bulletColor: 0xfb7185,
+      tag: 'マッドボム',
+    },
+    dog: {
+      id: 'dog',
+      name: 'シバイヌ・ボルト',
+      price: 70,
+      desc: '忠実な相棒犬。回転するボーンブーメランを素早く射出。',
+      icon: '🐶',
+      attackInterval: 2.0,
+      bulletColor: 0xfef08a,
+      tag: '快速迎撃',
+    },
+    cheetah: {
+      id: 'cheetah',
+      name: 'ソニックチーター',
+      price: 150,
+      desc: '最速のプレデター。電光レーザー弾を猛烈な速度で連射。',
+      icon: '🐆',
+      attackInterval: 1.6,
+      bulletColor: 0x38bdf8,
+      tag: '超速レーザー',
+    },
+    unicorn: {
+      id: 'unicorn',
+      name: 'スターユニコーン',
+      price: 200,
+      desc: '星屑の角から聖なる流星弾を放つ伝説の幻獣。',
+      icon: '🦄',
+      attackInterval: 1.8,
+      bulletColor: 0xc084fc,
+      tag: '星屑の聖弾',
+    },
+  },
+};
+
+
 // =============================================================================
 // 2. Web Audio API (BGM, SE, 音量スライダー連動, 勝利ファンファーレ)
 // =============================================================================
@@ -1364,13 +1587,23 @@ class Player {
     // ====================================
     // マテリアル定義 (プレミアムPBR)
     // ====================================
-    const skinMat   = new THREE.MeshStandardMaterial({ color: 0xffcc88, roughness: 0.7, metalness: 0.0 });
-    const hairMat   = new THREE.MeshStandardMaterial({ color: 0x1c1008, roughness: 0.9, metalness: 0.0 });
-    const armorMat  = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.25, metalness: 0.85 });
-    const cloakMat  = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.8, metalness: 0.0 });
-    const beltMat   = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.6, metalness: 0.2 });
-    const bladeMat  = new THREE.MeshStandardMaterial({ color: 0xdbeafe, emissive: 0x2563eb, emissiveIntensity: 0.6, roughness: 0.05, metalness: 1.0 });
-    const guardMat  = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa7700, emissiveIntensity: 0.3, roughness: 0.3, metalness: 0.9 });
+    this.skinMat   = new THREE.MeshStandardMaterial({ color: 0xffcc88, roughness: 0.7, metalness: 0.0 });
+    this.hairMat   = new THREE.MeshStandardMaterial({ color: 0x1c1008, roughness: 0.9, metalness: 0.0 });
+    this.armorMat  = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.25, metalness: 0.85 });
+    this.cloakMat  = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.8, metalness: 0.0 });
+    this.beltMat   = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.6, metalness: 0.2 });
+    this.bladeMat  = new THREE.MeshStandardMaterial({ color: 0xdbeafe, emissive: 0x2563eb, emissiveIntensity: 0.6, roughness: 0.05, metalness: 1.0 });
+    this.guardMat  = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa7700, emissiveIntensity: 0.3, roughness: 0.3, metalness: 0.9 });
+    this.visorMat  = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.5, transparent: true, opacity: 0.85, roughness: 0.0 });
+
+    const skinMat = this.skinMat;
+    const hairMat = this.hairMat;
+    const armorMat = this.armorMat;
+    const cloakMat = this.cloakMat;
+    const beltMat = this.beltMat;
+    const bladeMat = this.bladeMat;
+    const guardMat = this.guardMat;
+    const visorMat = this.visorMat;
 
     // ====================================
     // 足 (左右)
@@ -1610,16 +1843,19 @@ class Player {
 
     // ヘルメットびさし (Visor)
     const visorGeo = new THREE.BoxGeometry(0.28, 0.07, 0.04);
-    const visorMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.5, transparent: true, opacity: 0.85, roughness: 0.0 });
-    const visor = new THREE.Mesh(visorGeo, visorMat);
-    visor.position.set(0, 0.16, 0.22);
-    this.headGroup.add(visor);
+    this.visorMesh = new THREE.Mesh(visorGeo, this.visorMat);
+    this.visorMesh.position.set(0, 0.16, 0.22);
+    this.headGroup.add(this.visorMesh);
 
     // ヘルメット鼻ガード
     const noseGuardGeo = new THREE.BoxGeometry(0.06, 0.22, 0.04);
-    const noseGuard = new THREE.Mesh(noseGuardGeo, armorMat);
-    noseGuard.position.set(0, 0.06, 0.22);
-    this.headGroup.add(noseGuard);
+    this.noseGuard = new THREE.Mesh(noseGuardGeo, armorMat);
+    this.noseGuard.position.set(0, 0.06, 0.22);
+    this.headGroup.add(this.noseGuard);
+
+    // 頭部装飾装備グループ
+    this.headGearGroup = new THREE.Group();
+    this.headGroup.add(this.headGearGroup);
 
     // ====================================
     // スラッシュエフェクト
@@ -1638,6 +1874,118 @@ class Player {
     // (traverse後に上書きすることで攻撃前の影投影を防ぐ)
     this.slashMesh.castShadow = false;
     this.slashMesh.receiveShadow = false;
+
+    // セーブデータに応じた初期スキン適用
+    if (typeof saveData !== 'undefined' && saveData.equipped) {
+      if (saveData.equipped.outfit) this.applyOutfit(saveData.equipped.outfit);
+      if (saveData.equipped.head) this.applyHeadGear(saveData.equipped.head);
+      if (saveData.equipped.sword) this.applySword(saveData.equipped.sword);
+    }
+  }
+
+  // 🛡️ アーマー衣装スキンの変更
+  applyOutfit(outfitId) {
+    const item = ITEMS_DATA.outfits[outfitId] || ITEMS_DATA.outfits.default;
+    this.currentOutfit = item.id;
+    if (this.cloakMat) this.cloakMat.color.setHex(item.cloakColor);
+    if (this.armorMat) this.armorMat.color.setHex(item.armorColor);
+    if (this.visorMat) {
+      this.visorMat.color.setHex(item.visorColor);
+      this.visorMat.emissive.setHex(item.visorColor);
+    }
+  }
+
+  // 👤 頭部装備の変更
+  applyHeadGear(headId) {
+    this.currentHead = headId;
+    if (!this.headGearGroup) return;
+
+    while (this.headGearGroup.children.length > 0) {
+      const child = this.headGearGroup.children[0];
+      this.headGearGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+
+    if (headId === 'none') {
+      if (this.visorMesh) this.visorMesh.visible = true;
+      if (this.noseGuard) this.noseGuard.visible = true;
+      return;
+    }
+
+    if (headId === 'sunglasses') {
+      if (this.visorMesh) this.visorMesh.visible = false;
+      if (this.noseGuard) this.noseGuard.visible = false;
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.1, metalness: 0.9 });
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8 });
+
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.06), frameMat);
+      frame.position.set(0, 0.06, 0.23);
+      this.headGearGroup.add(frame);
+
+      const leftLens = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.02), glassMat);
+      leftLens.position.set(-0.1, 0.06, 0.26);
+      this.headGearGroup.add(leftLens);
+
+      const rightLens = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.02), glassMat);
+      rightLens.position.set(0.1, 0.06, 0.26);
+      this.headGearGroup.add(rightLens);
+
+    } else if (headId === 'ninja_band') {
+      if (this.visorMesh) this.visorMesh.visible = true;
+      const bandMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 });
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.08, 0.48), bandMat);
+      band.position.set(0, 0.12, 0);
+      this.headGearGroup.add(band);
+
+      const knot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), bandMat);
+      knot.position.set(0, 0.12, -0.26);
+      this.headGearGroup.add(knot);
+
+      const tail1 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.35, 0.02), bandMat);
+      tail1.position.set(-0.06, -0.05, -0.28);
+      tail1.rotation.z = -0.25;
+      this.headGearGroup.add(tail1);
+
+    } else if (headId === 'samurai_helm') {
+      if (this.visorMesh) this.visorMesh.visible = true;
+      const goldMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.2, metalness: 0.95 });
+      const crest = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 6, 12, Math.PI * 0.8), goldMat);
+      crest.rotation.z = -Math.PI * 0.4;
+      crest.position.set(0, 0.38, 0.18);
+      this.headGearGroup.add(crest);
+
+    } else if (headId === 'cyber_horns') {
+      if (this.visorMesh) this.visorMesh.visible = true;
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0xa855f7, emissiveIntensity: 0.8, roughness: 0.1 });
+      const hornGeo = new THREE.ConeGeometry(0.06, 0.3, 6);
+
+      const leftHorn = new THREE.Mesh(hornGeo, hornMat);
+      leftHorn.position.set(-0.18, 0.35, 0.05);
+      leftHorn.rotation.z = 0.4;
+      leftHorn.rotation.x = -0.2;
+      this.headGearGroup.add(leftHorn);
+
+      const rightHorn = new THREE.Mesh(hornGeo, hornMat);
+      rightHorn.position.set(0.18, 0.35, 0.05);
+      rightHorn.rotation.z = -0.4;
+      rightHorn.rotation.x = -0.2;
+      this.headGearGroup.add(rightHorn);
+    }
+  }
+
+  // 🗡️ 刀スキンの変更
+  applySword(swordId) {
+    const item = ITEMS_DATA.swords[swordId] || ITEMS_DATA.swords.default;
+    this.currentSword = item.id;
+    if (this.bladeMat) {
+      this.bladeMat.color.setHex(item.bladeColor);
+      this.bladeMat.emissive.setHex(item.emissive);
+    }
+    if (this.slashMat) {
+      this.slashMat.color.setHex(item.slashColor);
+    }
+  }
   }
 
   update(delta) {
@@ -2072,6 +2420,206 @@ class Player {
     }
   }
 }
+
+// =============================================================================
+// 6.4 バディペットシステム (BuddyPet & PetManager)
+// =============================================================================
+class BuddyPet {
+  constructor(player, petType = 'fairy', slotIndex = 0) {
+    this.player = player;
+    this.petType = petType;
+    this.slotIndex = slotIndex;
+    this.petData = ITEMS_DATA.pets[petType] || ITEMS_DATA.pets.fairy;
+
+    this.group = new THREE.Group();
+    const initOffset = CONFIG.petOffsets[slotIndex] || CONFIG.petOffsets[0];
+    this.group.position.copy(player.group.position).add(initOffset);
+    scene.add(this.group);
+
+    this.hoverTime = Math.random() * 10;
+    this.attackTimer = Math.random() * 1.5;
+    this.attackCooldown = this.petData.attackInterval || 2.5;
+
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    while (this.group.children.length > 0) {
+      const child = this.group.children[0];
+      this.group.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+
+    const type = this.petType;
+    const bulletColor = this.petData.bulletColor || 0x38bdf8;
+
+    if (type === 'gorilla') {
+      const furMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.8 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.6 });
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.42), furMat);
+      this.group.add(this.body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.28), furMat);
+      head.position.set(0, 0.32, 0.08);
+      this.body.add(head);
+    } else if (type === 'lion') {
+      const furMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.6 });
+      const maneMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.8 });
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.48), furMat);
+      this.group.add(this.body);
+      const mane = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.28), maneMat);
+      mane.position.set(0, 0.15, 0.16);
+      this.body.add(mane);
+    } else if (type === 'pig') {
+      const pinkMat = new THREE.MeshStandardMaterial({ color: 0xfb7185, roughness: 0.5 });
+      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), pinkMat);
+      this.group.add(this.body);
+      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 8), pinkMat);
+      snout.rotation.x = Math.PI / 2;
+      snout.position.set(0, 0, 0.28);
+      this.body.add(snout);
+    } else if (type === 'dog') {
+      const dogMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 });
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.32, 0.46), dogMat);
+      this.group.add(this.body);
+    } else if (type === 'cheetah') {
+      const chMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.52), chMat);
+      this.group.add(this.body);
+    } else if (type === 'unicorn') {
+      const uniMat = new THREE.MeshStandardMaterial({ color: 0xfdf4ff, roughness: 0.3 });
+      this.body = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.48), uniMat);
+      this.group.add(this.body);
+      const hornMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.8 });
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.28, 6), hornMat);
+      horn.position.set(0, 0.4, 0.2);
+      horn.rotation.x = 0.3;
+      this.body.add(horn);
+    } else {
+      // フェアリー (妖精)
+      const fairyMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, emissive: 0xec4899, emissiveIntensity: 0.4, roughness: 0.2 });
+      this.body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), fairyMat);
+      this.group.add(this.body);
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.65, roughness: 0.1 });
+      const lWing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.02), wingMat);
+      lWing.position.set(-0.25, 0.08, -0.1);
+      lWing.rotation.y = 0.4;
+      this.body.add(lWing);
+      const rWing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.02), wingMat);
+      rWing.position.set(0.25, 0.08, -0.1);
+      rWing.rotation.y = -0.4;
+      this.body.add(rWing);
+    }
+
+    // 発光オーラ
+    const light = new THREE.PointLight(bulletColor, 0.6, 3.0);
+    light.position.set(0, 0, 0);
+    this.group.add(light);
+  }
+
+  update(delta) {
+    if (state.mode === GAME_MODE.GAMEOVER || state.mode === GAME_MODE.TITLE) return;
+
+    this.hoverTime += delta * 3.5;
+    const targetOffset = (CONFIG.petOffsets[this.slotIndex] || CONFIG.petOffsets[0]).clone();
+    targetOffset.y += Math.sin(this.hoverTime) * 0.22;
+
+    const targetPos = this.player.group.position.clone().add(targetOffset);
+    targetPos.y = Math.max(targetPos.y, getTerrainHeight(targetPos.x, targetPos.z) + 1.2);
+
+    this.group.position.lerp(targetPos, Math.min(delta * CONFIG.petFollowSpeed, 1.0));
+    this.group.rotation.y = this.player.group.rotation.y;
+
+    // 支援攻撃タイマー
+    this.attackTimer += delta;
+    if (this.attackTimer >= this.attackCooldown) {
+      this.attackTimer = 0;
+      this.tryAttack();
+    }
+  }
+
+  tryAttack() {
+    if (state.mode !== GAME_MODE.PLAYING) return;
+    let closestEnemy = null;
+    let closestDist = CONFIG.petAttackRange || 14.0;
+
+    enemyManager.enemies.forEach(e => {
+      if (e.isDead || e.isDying) return;
+      const d = this.group.position.distanceTo(e.group.position);
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = e;
+      }
+    });
+
+    if (closestEnemy) {
+      this.shootBullet(closestEnemy);
+    }
+  }
+
+  shootBullet(targetEnemy) {
+    const startPos = this.group.position.clone();
+    const targetPos = targetEnemy.group.position.clone().add(new THREE.Vector3(0, 0.8, 0));
+    const dir = new THREE.Vector3().subVectors(targetPos, startPos).normalize();
+
+    const bulletColor = this.petData.bulletColor || 0x38bdf8;
+    const geo = new THREE.SphereGeometry(0.18, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: bulletColor });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(startPos);
+    scene.add(mesh);
+
+    let life = 1.0;
+    const speed = 20.0;
+    const interval = setInterval(() => {
+      life -= 0.04;
+      mesh.position.addScaledVector(dir, speed * 0.04);
+
+      if (targetEnemy && !targetEnemy.isDead) {
+        if (mesh.position.distanceTo(targetEnemy.group.position) < 1.2) {
+          targetEnemy.takeDamage(18, dir, null, false);
+          soundManager.playHitImpact(false);
+          clearInterval(interval);
+          scene.remove(mesh);
+          return;
+        }
+      }
+
+      if (life <= 0) {
+        clearInterval(interval);
+        scene.remove(mesh);
+      }
+    }, 40);
+  }
+
+  destroy() {
+    scene.remove(this.group);
+  }
+}
+
+class PetManager {
+  constructor(player) {
+    this.player = player;
+    this.pets = [];
+    this.rebuild(saveData?.equipped?.pets || ['fairy']);
+  }
+
+  rebuild(petIds) {
+    this.pets.forEach(p => p.destroy());
+    this.pets = [];
+
+    const ids = Array.isArray(petIds) && petIds.length > 0 ? petIds : ['fairy'];
+    ids.slice(0, 3).forEach((petId, index) => {
+      const pet = new BuddyPet(this.player, petId, index);
+      this.pets.push(pet);
+    });
+  }
+
+  update(delta) {
+    this.pets.forEach(pet => pet.update(delta));
+  }
+}
+
 
 // =============================================================================
 // 6.5 リモートプレイヤー (2P ONLINE 同期プレイヤー)
@@ -4561,9 +5109,80 @@ class ShopUI {
     this.modal.classList.add('hidden');
   }
 
+  buyItem(categoryKey, item) {
+    if (state.coins < item.price) {
+      soundManager.playPlayerHurt();
+      return;
+    }
+    soundManager.playBuy();
+    state.coins -= item.price;
+    saveData.coins = state.coins;
+
+    const unlockKey = categoryKey === 'outfit' ? 'outfits' : (categoryKey === 'head' ? 'heads' : 'swords');
+    if (!saveData.unlocked[unlockKey].includes(item.id)) {
+      saveData.unlocked[unlockKey].push(item.id);
+    }
+    this.equipItem(categoryKey, item.id);
+  }
+
+  equipItem(categoryKey, itemId) {
+    saveData.equipped[categoryKey] = itemId;
+    if (categoryKey === 'outfit') {
+      this.player.applyOutfit(itemId);
+    } else if (categoryKey === 'head') {
+      this.player.applyHeadGear(itemId);
+    } else if (categoryKey === 'sword') {
+      this.player.applySword(itemId);
+    }
+    SaveManager.save(saveData);
+    updateHUD();
+    this.render();
+  }
+
+  buyPet(item) {
+    if (state.coins < item.price) {
+      soundManager.playPlayerHurt();
+      return;
+    }
+    soundManager.playBuy();
+    state.coins -= item.price;
+    saveData.coins = state.coins;
+
+    if (!saveData.unlocked.pets.includes(item.id)) {
+      saveData.unlocked.pets.push(item.id);
+    }
+    if (saveData.equipped.pets.length < 3) {
+      this.equipPet(item.id);
+    } else {
+      SaveManager.save(saveData);
+      updateHUD();
+      this.render();
+    }
+  }
+
+  equipPet(petId) {
+    if (saveData.equipped.pets.length >= 3 || saveData.equipped.pets.includes(petId)) return;
+    saveData.equipped.pets.push(petId);
+    if (typeof petManager !== 'undefined' && petManager) petManager.rebuild(saveData.equipped.pets);
+    SaveManager.save(saveData);
+    updateHUD();
+    this.render();
+  }
+
+  unequipPet(petId) {
+    if (saveData.equipped.pets.length <= 1) return;
+    saveData.equipped.pets = saveData.equipped.pets.filter(id => id !== petId);
+    if (typeof petManager !== 'undefined' && petManager) petManager.rebuild(saveData.equipped.pets);
+    SaveManager.save(saveData);
+    updateHUD();
+    this.render();
+  }
+
   render() {
     this.grid.innerHTML = '';
-    if (this.currentTab === 'magic') {
+    const tab = this.currentTab;
+
+    if (tab === 'magic') {
       Object.values(MAGIC_DATA).forEach(magic => {
         const currentLevel = saveData.magicLevels[magic.id] || 1;
         const nextTier = magic.tiers[currentLevel];
@@ -4593,18 +5212,122 @@ class ShopUI {
               saveData.coins = state.coins;
               saveData.magicLevels[magic.id] = currentLevel + 1;
               SaveManager.save(saveData);
-              const tag = document.getElementById(`tag-level-${magic.id}`);
-              if (tag) tag.innerText = `Lv.${currentLevel + 1}`;
+              updateStatusHUD();
               updateHUD();
               this.render();
+            } else {
+              soundManager.playPlayerHurt();
+              card.classList.add('shake-anim');
+              setTimeout(() => card.classList.remove('shake-anim'), 400);
             }
           });
         }
         this.grid.appendChild(card);
       });
+    } else if (tab === 'outfit' || tab === 'head' || tab === 'sword') {
+      const categoryKey = tab === 'outfit' ? 'outfits' : (tab === 'head' ? 'heads' : 'swords');
+      const unlockKey = tab === 'outfit' ? 'outfits' : (tab === 'head' ? 'heads' : 'swords');
+      const equipKey = tab;
+      const items = ITEMS_DATA[categoryKey] || {};
+      const unlockedList = saveData.unlocked[unlockKey] || ['default', 'none'];
+      const equippedId = saveData.equipped[equipKey];
+
+      Object.values(items).forEach(item => {
+        const isUnlocked = unlockedList.includes(item.id);
+        const isEquipped = equippedId === item.id;
+
+        const card = document.createElement('div');
+        card.className = `item-card ${isEquipped ? 'is-equipped' : ''}`;
+        card.innerHTML = `
+          ${isEquipped ? '<span class="item-badge-equipped">装備中</span>' : ''}
+          <div class="item-preview-box">
+            <span class="item-icon-display">${item.icon}</span>
+            ${item.tag ? `<span class="item-effect-tag">${item.tag}</span>` : ''}
+          </div>
+          <div class="item-info">
+            <h3 class="item-name">${item.name}</h3>
+            <p class="item-desc">${item.desc}</p>
+          </div>
+          <div class="item-action-row">
+            <button class="item-btn ${isEquipped ? 'item-btn-equipped' : (isUnlocked ? 'item-btn-equip' : 'item-btn-buy')}">
+              ${isEquipped ? '✓ 装備中' : (isUnlocked ? '装備する' : `購入 🪙${item.price}`)}
+            </button>
+          </div>
+        `;
+
+        const btn = card.querySelector('button');
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          if (isEquipped) return;
+          if (isUnlocked) {
+            this.equipItem(tab, item.id);
+          } else {
+            this.buyItem(tab, item);
+          }
+        });
+
+        this.grid.appendChild(card);
+      });
+    } else if (tab === 'pet') {
+      const items = ITEMS_DATA.pets || {};
+      const unlockedPets = saveData.unlocked.pets || ['fairy'];
+      const equippedPets = saveData.equipped.pets || ['fairy'];
+
+      Object.values(items).forEach(item => {
+        const isUnlocked = unlockedPets.includes(item.id);
+        const slotIdx = equippedPets.indexOf(item.id);
+        const isEquipped = slotIdx !== -1;
+
+        const card = document.createElement('div');
+        card.className = `item-card ${isEquipped ? 'is-equipped' : ''}`;
+        card.innerHTML = `
+          ${isEquipped ? `<span class="item-badge-slot">SLOT ${slotIdx + 1}</span>` : ''}
+          <div class="item-preview-box">
+            <span class="item-icon-display">${item.icon}</span>
+            ${item.tag ? `<span class="item-effect-tag">${item.tag}</span>` : ''}
+          </div>
+          <div class="item-info">
+            <h3 class="item-name">${item.name}</h3>
+            <p class="item-desc">${item.desc} (攻撃間隔: ${item.attackInterval}s)</p>
+          </div>
+          <div class="item-action-row">
+            ${isEquipped
+              ? `<button class="item-btn item-btn-unequip">✕ 外す</button>`
+              : `<button class="item-btn ${isUnlocked ? 'item-btn-equip' : 'item-btn-buy'}">
+                   ${isUnlocked ? (equippedPets.length >= 3 ? '満杯 (3/3)' : '編成する') : `購入 🪙${item.price}`}
+                 </button>`
+            }
+          </div>
+        `;
+
+        const btn = card.querySelector('button');
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          if (isEquipped) {
+            if (equippedPets.length <= 1) {
+              card.classList.add('shake-anim');
+              setTimeout(() => card.classList.remove('shake-anim'), 400);
+              return;
+            }
+            this.unequipPet(item.id);
+          } else if (isUnlocked) {
+            if (equippedPets.length >= 3) {
+              card.classList.add('shake-anim');
+              setTimeout(() => card.classList.remove('shake-anim'), 400);
+              return;
+            }
+            this.equipPet(item.id);
+          } else {
+            this.buyPet(item);
+          }
+        });
+
+        this.grid.appendChild(card);
+      });
     }
   }
 }
+
 
 // リサイズ
 window.addEventListener('resize', () => {
@@ -4755,6 +5478,7 @@ networkManager.init(remotePlayer);
 
 const enemyManager = new EnemyManager();
 const stageManager = new StageManager();
+const petManager = new PetManager(player);
 const cameraController = new CameraController(camera, player);
 const itemManager = new ItemManager();
 const shopUI = new ShopUI(player);
@@ -4785,6 +5509,7 @@ function animate() {
 
   if (state.mode === GAME_MODE.PLAYING || state.mode === GAME_MODE.VICTORY) {
     player.update(delta);
+    petManager.update(delta);
     if (state.isMultiplayer) {
       remotePlayer.update(delta);
     }
