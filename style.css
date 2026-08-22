@@ -66,15 +66,38 @@ html, body {
   left: 0;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle, transparent 40%, rgba(239, 68, 68, 0.45) 100%);
+  /* 四辺から赤い血管・オーラが迫るグラデーション */
+  background: radial-gradient(ellipse at center, transparent 38%, rgba(180, 20, 20, 0.55) 75%, rgba(220, 0, 0, 0.78) 100%);
   pointer-events: none;
   z-index: 5;
   opacity: 0;
-  transition: opacity 0.08s ease-out;
+  transition: opacity 0.06s ease-out;
 }
 
+/* 通常ダメージ: 赤フラッシュ + 脈動 */
 .damage-overlay.is-hit {
   opacity: 1;
+  animation: damageFlash 0.22s ease-out forwards;
+}
+
+/* 重大ダメージ (20以上): より強烈な演出 */
+.damage-overlay.is-hit-heavy {
+  opacity: 1;
+  background: radial-gradient(ellipse at center, rgba(180,0,0,0.15) 20%, rgba(200, 15, 15, 0.72) 60%, rgba(255, 0, 0, 0.92) 100%);
+  animation: damageFlashHeavy 0.32s ease-out forwards;
+}
+
+@keyframes damageFlash {
+  0%   { opacity: 1;   transform: scale(1.0); }
+  30%  { opacity: 0.85; transform: scale(1.008); }
+  100% { opacity: 0;   transform: scale(1.0); }
+}
+
+@keyframes damageFlashHeavy {
+  0%   { opacity: 1;    transform: scale(1.0) rotate(-0.4deg); filter: brightness(1.6) saturate(2.0); }
+  15%  { opacity: 1;    transform: scale(1.015) rotate(0.4deg); filter: brightness(0.7) saturate(2.5); }
+  35%  { opacity: 0.9;  transform: scale(1.01) rotate(-0.2deg); filter: brightness(1.2) saturate(2.0); }
+  100% { opacity: 0;    transform: scale(1.0); filter: none; }
 }
 
 /* ボス出現警告バナー */

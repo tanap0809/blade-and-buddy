@@ -625,6 +625,80 @@ class SoundManager {
     osc.stop(this.ctx.currentTime + 0.19);
   }
 
+  // ボス死亡時の「ぐわー！！」雄たけび (低音フォルマント合成)
+  playBossRoar() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // 層 1: メイン声帯 (クリーチャーの喇び = 低音サウ耄波)
+    const osc1 = this.ctx.createOscillator();
+    osc1.type = 'sawtooth';
+    // 「ぐ」から匆下しながら「わー」へ
+    osc1.frequency.setValueAtTime(110, now);
+    osc1.frequency.linearRampToValueAtTime(130, now + 0.08);   // 上昇
+    osc1.frequency.exponentialRampToValueAtTime(55, now + 0.65); // 沈み込む
+
+    // 第1フォルマント F1 (「あ」母音 = 700Hz)
+    const f1a = this.ctx.createBiquadFilter();
+    f1a.type = 'bandpass';
+    f1a.frequency.setValueAtTime(700, now);
+    f1a.frequency.linearRampToValueAtTime(350, now + 0.65); // 「う」向かって下がる
+    f1a.Q.setValueAtTime(7, now);
+
+    // 第2フォルマント F2 (母音識別)
+    const f2a = this.ctx.createBiquadFilter();
+    f2a.type = 'bandpass';
+    f2a.frequency.setValueAtTime(1100, now);
+    f2a.frequency.linearRampToValueAtTime(600, now + 0.65);
+    f2a.Q.setValueAtTime(9, now);
+
+    // メインゲイン (ごく短いアタック + メイン + 起伏あるリリース)
+    const g1 = this.ctx.createGain();
+    g1.gain.setValueAtTime(0.0, now);
+    g1.gain.linearRampToValueAtTime(0.85, now + 0.04);
+    g1.gain.setValueAtTime(0.85, now + 0.35);
+    g1.gain.exponentialRampToValueAtTime(0.01, now + 0.75);
+
+    osc1.connect(f1a); osc1.connect(f2a);
+    f1a.connect(g1);   f2a.connect(g1);
+    g1.connect(this.sfxGain);
+    osc1.start(now);
+    osc1.stop(now + 0.78);
+
+    // 層 2: 低音サブオシレーター (身体を振るわせる深み)
+    const osc2 = this.ctx.createOscillator();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(60, now);
+    osc2.frequency.exponentialRampToValueAtTime(25, now + 0.7);
+    const g2 = this.ctx.createGain();
+    g2.gain.setValueAtTime(0.7, now);
+    g2.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
+    osc2.connect(g2);
+    g2.connect(this.sfxGain);
+    osc2.start(now);
+    osc2.stop(now + 0.72);
+
+    // 層 3: ノイズ承り (欧気感)
+    const nBufSz = Math.floor(this.ctx.sampleRate * 0.18);
+    const nBuf   = this.ctx.createBuffer(1, nBufSz, this.ctx.sampleRate);
+    const nData  = nBuf.getChannelData(0);
+    for (let i = 0; i < nBufSz; i++) nData[i] = Math.random() * 2 - 1;
+    const noiseNode = this.ctx.createBufferSource();
+    noiseNode.buffer = nBuf;
+    const nFilter = this.ctx.createBiquadFilter();
+    nFilter.type = 'bandpass';
+    nFilter.frequency.setValueAtTime(400, now);
+    nFilter.Q.setValueAtTime(1.5, now);
+    const gn = this.ctx.createGain();
+    gn.gain.setValueAtTime(0.35, now);
+    gn.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+    noiseNode.connect(nFilter);
+    nFilter.connect(gn);
+    gn.connect(this.sfxGain);
+    noiseNode.start(now);
+    noiseNode.stop(now + 0.19);
+  }
+
   playVictoryFanfare() {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
@@ -1679,12 +1753,16 @@ class Player {
     this.invincibleTimer = 1.0;
 
     soundManager.playPlayerHurt();
-    cameraController.shake(0.35);
+    // ダメージ量に応じたカメラ揺れ (大ダメージは強め)
+    cameraController.shake(amount >= 20 ? 0.65 : 0.35);
 
+    // 画面フラッシュエフェクト
     const overlay = document.getElementById('damage-overlay');
     if (overlay) {
-      overlay.classList.add('is-hit');
-      setTimeout(() => overlay.classList.remove('is-hit'), 180);
+      // 大ダメージは「is-hit-heavy」クラスでより強烈に
+      const cls = amount >= 20 ? 'is-hit-heavy' : 'is-hit';
+      overlay.classList.add(cls);
+      setTimeout(() => overlay.classList.remove(cls), amount >= 20 ? 280 : 180);
     }
 
     if (fromPos) {
@@ -2095,7 +2173,9 @@ class Enemy {
     updateHUD(this.group.position, `+${this.coinReward}🪙`);
 
     if (this.isBoss) {
-      stageManager.onBossDefeated();
+      // ボス撃破: 雄たけびSE → ステージクリア
+      soundManager.playBossRoar();
+      setTimeout(() => stageManager.onBossDefeated(), 600); // 叫びの後に演出開始
     } else {
       stageManager.onRegularKill();
     }
