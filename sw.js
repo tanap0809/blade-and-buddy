@@ -3,7 +3,7 @@
  * Offline Cache & PWA Support
  */
 
-const CACHE_NAME = 'blade-and-buddy-v11';
+const CACHE_NAME = 'blade-and-buddy-v12';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -16,6 +16,7 @@ const ASSETS_TO_CACHE = [
   './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
   'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js',
+  'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
   'https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Noto+Sans+JP:wght@500;700&display=swap',
 ];
 

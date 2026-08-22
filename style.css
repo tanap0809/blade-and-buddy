@@ -1216,3 +1216,238 @@ html, body {
   color: rgba(56, 189, 248, 0.7);
   padding-top: 3px;
 }
+
+/* =============================================================================
+   オンラインマルチプレイ UI & モーダル
+   ============================================================================= */
+.btn-online {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(6, 95, 70, 0.6)) !important;
+  border-color: rgba(16, 185, 129, 0.6) !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25) !important;
+}
+.btn-online:hover {
+  border-color: rgba(52, 211, 153, 0.9) !important;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.45) !important;
+}
+
+.online-modal-box {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(8, 14, 26, 0.98));
+  border: 1.5px solid rgba(16, 185, 129, 0.4);
+  border-radius: 20px;
+  width: 90%;
+  max-width: 440px;
+  padding: 28px 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(16, 185, 129, 0.2);
+  position: relative;
+  text-align: center;
+  backdrop-filter: blur(12px);
+  animation: modalPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.online-modal-header .online-icon {
+  font-size: 2.4rem;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.online-modal-header h2 {
+  color: #f8fafc;
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.online-desc {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  margin-bottom: 22px;
+}
+
+#online-select-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.online-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.15s ease;
+  color: #fff;
+}
+
+.online-btn:active {
+  transform: scale(0.97);
+}
+
+.online-btn-host {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+.online-btn-host:hover {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+.online-btn-guest {
+  background: linear-gradient(135deg, #059669, #047857);
+  border-color: rgba(52, 211, 153, 0.5);
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+}
+.online-btn-guest:hover {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.online-btn-connect {
+  background: linear-gradient(135deg, #10b981, #059669);
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.online-btn-icon {
+  font-size: 1.5rem;
+}
+
+.online-btn-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.online-btn-label small {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  letter-spacing: 1px;
+}
+
+.online-step-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+}
+
+.room-id-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 2px dashed rgba(56, 189, 248, 0.6);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 8px;
+}
+
+#room-id-text {
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: #38bdf8;
+  font-family: monospace;
+}
+
+.copy-btn {
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.copy-btn:hover {
+  background: rgba(56, 189, 248, 0.35);
+}
+.copy-btn:active {
+  transform: scale(0.95);
+}
+
+.online-hint {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 16px;
+}
+
+.room-id-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.9);
+  border: 2px solid rgba(56, 189, 248, 0.5);
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 1.5rem;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 4px;
+  color: #f8fafc;
+  outline: none;
+  font-family: monospace;
+  transition: border-color 0.15s ease;
+}
+.room-id-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+.connect-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  padding: 10px;
+  border-radius: 8px;
+  margin: 12px 0;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  animation: pulse 1.2s infinite;
+}
+
+.online-sub-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #94a3b8;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-top: 10px;
+}
+.online-sub-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* 2Pステータスカード */
+.p2-card {
+  border-color: rgba(16, 185, 129, 0.45) !important;
+  background: rgba(6, 78, 59, 0.35) !important;
+}
+.p2-badge {
+  background: rgba(16, 185, 129, 0.3) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+}
+.p2-hp {
+  background: linear-gradient(90deg, #10b981, #34d399) !important;
+}

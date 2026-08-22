@@ -112,6 +112,13 @@ const state = {
   dashTimer: 0,
   dashCooldownTimer: 0,
   dashDirection: new THREE.Vector3(),
+
+  // オンラインマルチプレイ状態
+  isMultiplayer: false,
+  isHost: false,
+  peerId: null,
+  p2Hp: 100,
+  p2MaxHp: 100,
 };
 
 // 5大属性魔法定義 (Lv1〜Lv3)
@@ -1811,6 +1818,11 @@ class Player {
     // 剣を振る声 (えい!/やぁ!/とお!)
     soundManager.playVoice(this.comboStep);
 
+    // オンライン相手へ攻撃モーションを同期
+    if (state.isMultiplayer && networkManager) {
+      networkManager.sendAttack(this.comboStep);
+    }
+
     state.isAttacking = true;
     state.canAttack = false;
     state.attackTimer = 0;
@@ -1907,8 +1919,535 @@ class Player {
 
     soundManager.playMagicSound(magicKey, currentLevel);
     magicSystem.cast(magicKey, currentLevel, this.group.position, this.group.rotation.y);
+
+    // オンライン相手へ魔法詠唱を同期
+    if (state.isMultiplayer && networkManager) {
+      networkManager.sendMagic(magicKey, currentLevel, this.group.position, this.group.rotation.y);
+    }
   }
 }
+
+// =============================================================================
+// 6.5 リモートプレイヤー (2P ONLINE 同期プレイヤー)
+// =============================================================================
+class RemotePlayer {
+  constructor() {
+    this.group = new THREE.Group();
+    this.group.visible = false;
+    scene.add(this.group);
+
+    this.targetPos = new THREE.Vector3(0, 0, 0);
+    this.targetRotY = 0;
+    this.walkCycle = 0;
+    this.isMoving = false;
+    this.isAttacking = false;
+    this.attackTimer = 0;
+    this.comboStep = 0;
+    this.hp = 100;
+    this.maxHp = 100;
+
+    this.buildMesh();
+  }
+
+  buildMesh() {
+    // 2Pカラーリング (エメラルドグリーン基調)
+    const skinMat   = new THREE.MeshStandardMaterial({ color: 0xffcc88, roughness: 0.7, metalness: 0.0 });
+    const hairMat   = new THREE.MeshStandardMaterial({ color: 0x2e1065, roughness: 0.9, metalness: 0.0 });
+    const armorMat  = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.25, metalness: 0.85 });
+    const cloakMat  = new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.8, metalness: 0.0 }); // エメラルド
+    const beltMat   = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.6, metalness: 0.2 });
+    const bladeMat  = new THREE.MeshStandardMaterial({ color: 0xa7f3d0, emissive: 0x10b981, emissiveIntensity: 0.6, roughness: 0.05, metalness: 1.0 });
+    const guardMat  = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xd97706, emissiveIntensity: 0.3, roughness: 0.3, metalness: 0.9 });
+
+    // 足 (左右)
+    const legGeo = new THREE.CylinderGeometry(0.13, 0.11, 0.65, 8);
+    this.leftLeg = new THREE.Mesh(legGeo, armorMat);
+    this.leftLeg.position.set(-0.25, 0.32, 0);
+    this.group.add(this.leftLeg);
+
+    this.rightLeg = new THREE.Mesh(legGeo, armorMat);
+    this.rightLeg.position.set(0.25, 0.32, 0);
+    this.group.add(this.rightLeg);
+
+    // 胴体
+    this.body = new THREE.Group();
+    this.body.position.y = 0.8;
+    this.group.add(this.body);
+
+    const torsoGeo = new THREE.CylinderGeometry(0.32, 0.26, 0.75, 8);
+    const torso = new THREE.Mesh(torsoGeo, cloakMat);
+    torso.position.y = 0.38;
+    this.body.add(torso);
+
+    const chestGeo = new THREE.BoxGeometry(0.55, 0.45, 0.38);
+    const chest = new THREE.Mesh(chestGeo, armorMat);
+    chest.position.set(0, 0.45, 0.02);
+    this.body.add(chest);
+
+    // 腕 (左腕 & 右腕)
+    const armGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.55, 6);
+    this.leftArmPivot = new THREE.Group();
+    this.leftArmPivot.position.set(-0.42, 0.65, 0);
+    const lArm = new THREE.Mesh(armGeo, armorMat);
+    lArm.position.y = -0.22;
+    this.leftArmPivot.add(lArm);
+    this.body.add(this.leftArmPivot);
+
+    this.rightArmPivot = new THREE.Group();
+    this.rightArmPivot.position.set(0.42, 0.65, 0);
+    const rArm = new THREE.Mesh(armGeo, armorMat);
+    rArm.position.y = -0.22;
+    this.rightArmPivot.add(rArm);
+    this.body.add(this.rightArmPivot);
+
+    // 武器 (刀)
+    this.swordGroup = new THREE.Group();
+    this.swordGroup.position.set(0, -0.42, 0.1);
+    this.swordGroup.rotation.x = Math.PI / 2.5;
+
+    const bladeGeo = new THREE.BoxGeometry(0.06, 1.4, 0.03);
+    const blade = new THREE.Mesh(bladeGeo, bladeMat);
+    blade.position.y = 0.7;
+    this.swordGroup.add(blade);
+
+    const guardGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.03, 8);
+    const guard = new THREE.Mesh(guardGeo, guardMat);
+    guard.position.y = 0.0;
+    this.swordGroup.add(guard);
+
+    const hiltGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.35, 6);
+    const hilt = new THREE.Mesh(hiltGeo, beltMat);
+    hilt.position.y = -0.18;
+    this.swordGroup.add(hilt);
+
+    this.rightArmPivot.add(this.swordGroup);
+
+    // 頭部
+    const headGroup = new THREE.Group();
+    headGroup.position.y = 0.95;
+    this.body.add(headGroup);
+
+    const faceGeo = new THREE.SphereGeometry(0.24, 8, 8);
+    const face = new THREE.Mesh(faceGeo, skinMat);
+    headGroup.add(face);
+
+    const hairGeo = new THREE.SphereGeometry(0.26, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    const hair = new THREE.Mesh(hairGeo, hairMat);
+    hair.position.y = 0.04;
+    headGroup.add(hair);
+
+    // スラッシュエフェクト
+    const slashGeo = new THREE.RingGeometry(1.2, 2.3, 20, 1, 0, Math.PI * 0.75);
+    this.slashMat = new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+    this.slashMesh = new THREE.Mesh(slashGeo, this.slashMat);
+    this.slashMesh.rotation.x = Math.PI / 2;
+    this.slashMesh.position.set(0, 0, 0.8);
+    this.slashMesh.castShadow = false;
+    this.slashMesh.receiveShadow = false;
+    this.body.add(this.slashMesh);
+
+    // 頭上 2P ネームタグ & HPバースプライト
+    this.createNameTagSprite();
+
+    if (!isIPad) {
+      this.group.traverse(o => { if (o.isMesh && o !== this.slashMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    }
+  }
+
+  createNameTagSprite() {
+    this.tagCanvas = document.createElement('canvas');
+    this.tagCanvas.width = 128;
+    this.tagCanvas.height = 48;
+    this.tagCtx = this.tagCanvas.getContext('2d');
+
+    this.tagTex = new THREE.CanvasTexture(this.tagCanvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: this.tagTex, transparent: true });
+    this.tagSprite = new THREE.Sprite(spriteMat);
+    this.tagSprite.scale.set(1.6, 0.6, 1.0);
+    this.tagSprite.position.y = 2.4;
+    this.group.add(this.tagSprite);
+
+    this.updateNameTag();
+  }
+
+  updateNameTag() {
+    if (!this.tagCtx) return;
+    const ctx = this.tagCtx;
+    ctx.clearRect(0, 0, 128, 48);
+
+    // ネームバッジ "2P BUDDY"
+    ctx.fillStyle = 'rgba(6, 78, 59, 0.85)';
+    ctx.roundRect ? ctx.roundRect(14, 2, 100, 20, 6) : ctx.fillRect(14, 2, 100, 20);
+    ctx.fill();
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#34d399';
+    ctx.textAlign = 'center';
+    ctx.fillText('🟢 2P BUDDY', 64, 16);
+
+    // ミニHPバー
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(14, 26, 100, 14);
+
+    const ratio = Math.max(0, this.hp / this.maxHp);
+    ctx.fillStyle = ratio > 0.5 ? '#10b981' : (ratio > 0.25 ? '#eab308' : '#ef4444');
+    ctx.fillRect(16, 28, Math.floor(96 * ratio), 10);
+
+    this.tagTex.needsUpdate = true;
+  }
+
+  show() {
+    this.group.visible = true;
+    const p2Card = document.getElementById('p2-status-card');
+    if (p2Card) p2Card.classList.remove('hidden');
+  }
+
+  hide() {
+    this.group.visible = false;
+    const p2Card = document.getElementById('p2-status-card');
+    if (p2Card) p2Card.classList.add('hidden');
+  }
+
+  setHp(hp, maxHp) {
+    this.hp = hp;
+    this.maxHp = maxHp || this.maxHp;
+    this.updateNameTag();
+
+    // 2P HUDバー更新
+    const p2HpBar = document.getElementById('p2-hp-bar');
+    const p2HpText = document.getElementById('p2-hp-text');
+    const ratio = Math.max(0, this.hp / this.maxHp);
+    if (p2HpBar) p2HpBar.style.width = `${ratio * 100}%`;
+    if (p2HpText) p2HpText.innerText = `${Math.floor(this.hp)}/${this.maxHp}`;
+  }
+
+  triggerAttack(comboStep = 0) {
+    this.isAttacking = true;
+    this.attackTimer = 0;
+    this.comboStep = comboStep;
+    soundManager.playAttackSlash(comboStep);
+  }
+
+  update(delta) {
+    if (!this.group.visible) return;
+
+    // 位置補間 (スムーズlerp)
+    this.group.position.lerp(this.targetPos, Math.min(delta * 14.0, 1.0));
+
+    // 向き補間
+    let diff = this.targetRotY - this.group.rotation.y;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    this.group.rotation.y += diff * Math.min(delta * 12.0, 1.0);
+
+    // 地形高さ追従
+    this.group.position.y = getTerrainHeight(this.group.position.x, this.group.position.z);
+
+    // 歩行アニメーション
+    if (this.leftLeg && this.rightLeg) {
+      const speed = this.isMoving ? 12 : 2;
+      this.walkCycle += delta * speed;
+      const swing = this.isMoving ? 0.35 : 0.06;
+      this.leftLeg.rotation.x = Math.sin(this.walkCycle) * swing;
+      this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * swing;
+      if (this.leftArmPivot) this.leftArmPivot.rotation.x = -Math.sin(this.walkCycle) * swing * 0.7;
+    }
+
+    // 攻撃アニメーション
+    if (this.isAttacking) {
+      this.attackTimer += delta;
+      const dur = 0.25;
+      const prog = Math.min(this.attackTimer / dur, 1.0);
+      if (prog < 1.0) {
+        const ease = Math.sin(prog * Math.PI * 0.5);
+        this.rightArmPivot.rotation.y = -1.2 + ease * 2.4;
+        this.slashMesh.material.opacity = Math.sin(prog * Math.PI) * 0.9;
+      } else {
+        this.isAttacking = false;
+        this.slashMesh.material.opacity = 0;
+        this.rightArmPivot.rotation.set(0, 0, 0);
+      }
+    }
+  }
+}
+
+// =============================================================================
+// 6.6 ネットワークマネージャー (WebRTC PeerJS 通信管理)
+// =============================================================================
+class NetworkManager {
+  constructor() {
+    this.peer = null;
+    this.conn = null;
+    this.isConnected = false;
+    this.roomId = null;
+    this.sendTimer = null;
+    this.remotePlayer = null;
+  }
+
+  init(remotePlayer) {
+    this.remotePlayer = remotePlayer;
+  }
+
+  // 6桁のランダム数字コード生成
+  generateRoomId() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  // ホストとして部屋を作成
+  createRoom(onSuccess, onError) {
+    const rawId = this.generateRoomId();
+    this.roomId = rawId;
+    const fullPeerId = `blade-buddy-${rawId}`;
+
+    if (this.peer) this.peer.destroy();
+
+    try {
+      this.peer = new Peer(fullPeerId, {
+        debug: 1,
+      });
+    } catch (e) {
+      if (onError) onError(e);
+      return;
+    }
+
+    this.peer.on('open', (id) => {
+      state.isMultiplayer = true;
+      state.isHost = true;
+      state.peerId = id;
+      if (onSuccess) onSuccess(rawId);
+    });
+
+    this.peer.on('connection', (conn) => {
+      this.conn = conn;
+      this.setupConnectionHandlers();
+    });
+
+    this.peer.on('error', (err) => {
+      console.warn('PeerJS Host Error:', err);
+      if (onError) onError(err);
+    });
+  }
+
+  // ゲストとして部屋に参加
+  joinRoom(roomIdStr, onSuccess, onError) {
+    const rawId = roomIdStr.trim();
+    this.roomId = rawId;
+    const targetPeerId = `blade-buddy-${rawId}`;
+
+    if (this.peer) this.peer.destroy();
+
+    try {
+      this.peer = new Peer({ debug: 1 });
+    } catch (e) {
+      if (onError) onError(e);
+      return;
+    }
+
+    this.peer.on('open', () => {
+      state.isMultiplayer = true;
+      state.isHost = false;
+      const conn = this.peer.connect(targetPeerId, { reliable: true });
+      this.conn = conn;
+      this.setupConnectionHandlers(onSuccess, onError);
+    });
+
+    this.peer.on('error', (err) => {
+      console.warn('PeerJS Guest Error:', err);
+      if (onError) onError(err);
+    });
+  }
+
+  setupConnectionHandlers(onConnectSuccess, onConnectError) {
+    if (!this.conn) return;
+
+    this.conn.on('open', () => {
+      this.isConnected = true;
+      this.remotePlayer.show();
+
+      // 定期ステート送信開始 (20Hz = 50ms)
+      this.startSyncLoop();
+
+      // 初期ハンドシェイク送信
+      this.send({
+        type: 'HELLO',
+        isHost: state.isHost,
+        hp: player.hp,
+        maxHp: player.maxHp,
+      });
+
+      if (onConnectSuccess) onConnectSuccess();
+    });
+
+    this.conn.on('data', (data) => {
+      this.handleMessage(data);
+    });
+
+    this.conn.on('close', () => {
+      this.handleDisconnect();
+    });
+
+    this.conn.on('error', (err) => {
+      console.warn('DataConnection Error:', err);
+      if (onConnectError) onConnectError(err);
+    });
+  }
+
+  send(data) {
+    if (this.conn && this.conn.open) {
+      try {
+        this.conn.send(data);
+      } catch (e) {}
+    }
+  }
+
+  // 20Hz (50ms) 定期データ送信ループ
+  startSyncLoop() {
+    if (this.sendTimer) clearInterval(this.sendTimer);
+
+    this.sendTimer = setInterval(() => {
+      if (!this.isConnected || !this.conn || !this.conn.open) return;
+
+      const isMoving = state.moveVector.length() > 0.1 ||
+        state.keys.forward || state.keys.backward || state.keys.left || state.keys.right;
+
+      // 1. 自プレイヤーの位置・状態を相手へ送信
+      this.send({
+        type: 'PLAYER_STATE',
+        x: Math.round(player.group.position.x * 100) / 100,
+        z: Math.round(player.group.position.z * 100) / 100,
+        rotY: Math.round(player.group.rotation.y * 100) / 100,
+        isMoving,
+        isDashing: state.isDashing,
+        hp: player.hp,
+        maxHp: player.maxHp,
+      });
+
+      // 2. ホスト側のみ: 敵のスナップショットをゲストへ送信
+      if (state.isHost) {
+        this.sendEnemySnapshot();
+      }
+    }, 50);
+  }
+
+  sendEnemySnapshot() {
+    const enemyList = [];
+    enemyManager.enemies.forEach(e => {
+      if (e.isDead) return;
+      enemyList.push({
+        netId: e.netId,
+        type: e.type,
+        x: Math.round(e.group.position.x * 100) / 100,
+        z: Math.round(e.group.position.z * 100) / 100,
+        rotY: Math.round(e.group.rotation.y * 100) / 100,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        isBoss: !!e.isBoss,
+        freeze: e.freezeTimer > 0,
+      });
+    });
+
+    this.send({
+      type: 'ENEMY_SNAPSHOT',
+      stageIdx: state.currentStageIdx,
+      enemies: enemyList,
+    });
+  }
+
+  sendAttack(comboStep) {
+    this.send({
+      type: 'PLAYER_ATTACK',
+      comboStep,
+    });
+  }
+
+  sendMagic(magicKey, tier, pos, rotY) {
+    this.send({
+      type: 'PLAYER_MAGIC',
+      magicKey,
+      tier,
+      x: Math.round(pos.x * 100) / 100,
+      z: Math.round(pos.z * 100) / 100,
+      rotY: Math.round(rotY * 100) / 100,
+    });
+  }
+
+  sendEnemyHit(netId, damage, element, isHeavyKnockback) {
+    this.send({
+      type: 'ENEMY_HIT_REQUEST',
+      netId,
+      damage,
+      element,
+      isHeavyKnockback,
+    });
+  }
+
+  // 受信メッセージ処理
+  handleMessage(msg) {
+    if (!msg || !msg.type) return;
+
+    switch (msg.type) {
+      case 'HELLO':
+        this.remotePlayer.show();
+        if (msg.hp !== undefined) this.remotePlayer.setHp(msg.hp, msg.maxHp);
+        break;
+
+      case 'PLAYER_STATE':
+        this.remotePlayer.targetPos.set(msg.x, getTerrainHeight(msg.x, msg.z), msg.z);
+        this.remotePlayer.targetRotY = msg.rotY;
+        this.remotePlayer.isMoving = msg.isMoving;
+        if (msg.hp !== undefined) this.remotePlayer.setHp(msg.hp, msg.maxHp);
+        break;
+
+      case 'PLAYER_ATTACK':
+        this.remotePlayer.triggerAttack(msg.comboStep || 0);
+        break;
+
+      case 'PLAYER_MAGIC':
+        soundManager.playMagicSound(msg.magicKey, msg.tier || 1);
+        magicSystem.cast(msg.magicKey, msg.tier || 1, new THREE.Vector3(msg.x, getTerrainHeight(msg.x, msg.z), msg.z), msg.rotY);
+        break;
+
+      case 'ENEMY_SNAPSHOT':
+        if (!state.isHost) {
+          enemyManager.syncFromSnapshot(msg.enemies, msg.stageIdx);
+        }
+        break;
+
+      case 'ENEMY_HIT_REQUEST':
+        if (state.isHost) {
+          const targetEnemy = enemyManager.enemies.find(e => e.netId === msg.netId);
+          if (targetEnemy && !targetEnemy.isDead && !targetEnemy.isDying) {
+            const hitDir = new THREE.Vector3(0, 0, 1);
+            targetEnemy.takeDamage(msg.damage, hitDir, msg.element, msg.isHeavyKnockback);
+          }
+        }
+        break;
+    }
+  }
+
+  handleDisconnect() {
+    this.isConnected = false;
+    if (this.sendTimer) clearInterval(this.sendTimer);
+    if (this.remotePlayer) this.remotePlayer.hide();
+
+    const p2Card = document.getElementById('p2-status-card');
+    if (p2Card) p2Card.classList.add('hidden');
+  }
+
+  disconnect() {
+    if (this.sendTimer) clearInterval(this.sendTimer);
+    if (this.conn) this.conn.close();
+    if (this.peer) this.peer.destroy();
+    this.isConnected = false;
+    state.isMultiplayer = false;
+    state.isHost = false;
+    if (this.remotePlayer) this.remotePlayer.hide();
+  }
+}
+
 
 // =============================================================================
 // 7. 魔法システム (5大属性 × 3段階レベル)
@@ -2053,6 +2592,7 @@ class Enemy {
     this.weakness = weakness;
     this.resistance = resistance;
     this.coinReward = coinReward;
+    this.netId = ''; // ネットワーク識別ID
 
     this.group = new THREE.Group();
     this.isDead = false;
@@ -2102,6 +2642,13 @@ class Enemy {
 
   takeDamage(amount, hitDir, element = null, isHeavyKnockback = false) {
     if (this.isDead || this.isDying) return;
+
+    // ゲストプレイ時はホストへヒットリクエストを送信して委任
+    if (state.isMultiplayer && !state.isHost && networkManager && this.netId) {
+      networkManager.sendEnemyHit(this.netId, amount, element, isHeavyKnockback);
+      showDamagePopup(this.group.position, amount, 'normal');
+      return;
+    }
 
     let finalDamage = amount;
     let affinityType = 'normal';
@@ -2937,11 +3484,29 @@ class EnemyManager {
   constructor() {
     this.enemies = [];
     this.spawnTimer = 0;
+    this.nextNetId = 1;
   }
 
   update(delta, playerPos) {
     if (state.mode !== GAME_MODE.PLAYING) return;
 
+    // ゲストの場合はホストからのスナップショットで位置補間のみ行う
+    if (state.isMultiplayer && !state.isHost) {
+      for (let i = this.enemies.length - 1; i >= 0; i--) {
+        const e = this.enemies[i];
+        if (e.isDead) {
+          this.enemies.splice(i, 1);
+          continue;
+        }
+        if (e.targetPos) {
+          e.group.position.lerp(e.targetPos, Math.min(delta * 14.0, 1.0));
+        }
+        if (e.isBoss) updateBossHpBar(e);
+      }
+      return;
+    }
+
+    // ホストまたはソロプレイ時: 通常のスポーン & AI更新
     this.spawnTimer += delta;
     if (this.spawnTimer >= CONFIG.spawnInterval && this.getActiveRegularCount() < CONFIG.maxRegularEnemies) {
       this.spawnTimer = 0;
@@ -2989,6 +3554,7 @@ class EnemyManager {
     else if (rand < 0.75) enemy = new GhostEnemy();
     else enemy = new GoblinEnemy();
 
+    enemy.netId = 'e_' + (this.nextNetId++);
     enemy.group.position.set(x, getTerrainHeight(x, z), z);
     scene.add(enemy.group);
     this.enemies.push(enemy);
@@ -3001,11 +3567,60 @@ class EnemyManager {
     const z = playerPos.z + Math.sin(angle) * dist;
 
     const boss = (type === 'king_goblin') ? new KingGoblinEnemy() : new DemonEnemy();
+    boss.netId = 'boss_' + (this.nextNetId++);
     boss.group.position.set(x, getTerrainHeight(x, z), z);
     scene.add(boss.group);
     this.enemies.push(boss);
 
     showBossHpBar(boss);
+  }
+
+  // ゲスト側: ホストからの敵スナップショットを同期
+  syncFromSnapshot(snapshotList, stageIdx) {
+    if (!Array.isArray(snapshotList)) return;
+
+    const receivedIds = new Set(snapshotList.map(s => s.netId));
+
+    // スナップショットに存在しない敵を削除
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (!receivedIds.has(e.netId)) {
+        scene.remove(e.group);
+        this.enemies.splice(i, 1);
+      }
+    }
+
+    // スナップショットの敵を更新または新規生成
+    snapshotList.forEach(snap => {
+      let existing = this.enemies.find(e => e.netId === snap.netId);
+      if (!existing) {
+        // 新規スポーン
+        if (snap.type === 'zombie') existing = new ZombieEnemy();
+        else if (snap.type === 'ghost') existing = new GhostEnemy();
+        else if (snap.type === 'goblin') existing = new GoblinEnemy();
+        else if (snap.type === 'king_goblin') existing = new KingGoblinEnemy();
+        else if (snap.type === 'demon') existing = new DemonEnemy();
+        else existing = new ZombieEnemy();
+
+        existing.netId = snap.netId;
+        existing.targetPos = new THREE.Vector3(snap.x, getTerrainHeight(snap.x, snap.z), snap.z);
+        existing.group.position.copy(existing.targetPos);
+        scene.add(existing.group);
+        this.enemies.push(existing);
+
+        if (snap.isBoss) showBossHpBar(existing);
+      }
+
+      // 位置とHPの同期
+      if (!existing.targetPos) existing.targetPos = new THREE.Vector3();
+      existing.targetPos.set(snap.x, getTerrainHeight(snap.x, snap.z), snap.z);
+      existing.group.rotation.y = snap.rotY || 0;
+      if (existing.hp !== snap.hp) {
+        existing.hp = snap.hp;
+        existing.updateHpBar();
+      }
+      if (snap.freeze) existing.freeze(0.2);
+    });
   }
 }
 
@@ -3421,6 +4036,144 @@ function setupControls(player) {
   btnTitleOptions.addEventListener('pointerdown', (e) => { e.preventDefault(); optionsModal.classList.remove('hidden'); });
   btnTitleHowto.addEventListener('pointerdown', (e) => { e.preventDefault(); howtoModal.classList.remove('hidden'); });
 
+  // ====================================
+  // オンラインマルチプレイ UI イベント
+  // ====================================
+  const onlineModal = document.getElementById('online-modal');
+  const btnTitleOnline = document.getElementById('btn-title-online');
+  const btnOnlineClose = document.getElementById('btn-online-close');
+  const onlineSelectView = document.getElementById('online-select-view');
+  const onlineHostView = document.getElementById('online-host-view');
+  const onlineGuestView = document.getElementById('online-guest-view');
+
+  const btnCreateRoom = document.getElementById('btn-create-room');
+  const btnJoinRoom = document.getElementById('btn-join-room');
+  const btnCopyRoomId = document.getElementById('btn-copy-room-id');
+  const roomIdText = document.getElementById('room-id-text');
+  const hostStatusText = document.getElementById('host-status-text');
+  const btnHostCancel = document.getElementById('btn-host-cancel');
+
+  const roomIdInput = document.getElementById('room-id-input');
+  const btnConnectRoom = document.getElementById('btn-connect-room');
+  const guestStatus = document.getElementById('guest-status');
+  const guestStatusText = document.getElementById('guest-status-text');
+  const btnGuestCancel = document.getElementById('btn-guest-cancel');
+
+  function resetOnlineModalViews() {
+    if (onlineSelectView) onlineSelectView.classList.remove('hidden');
+    if (onlineHostView) onlineHostView.classList.add('hidden');
+    if (onlineGuestView) onlineGuestView.classList.add('hidden');
+    if (guestStatus) guestStatus.classList.add('hidden');
+    if (hostStatusText) hostStatusText.innerText = '相手の接続を待っています…';
+  }
+
+  if (btnTitleOnline) {
+    btnTitleOnline.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      soundManager.unlock();
+      resetOnlineModalViews();
+      onlineModal.classList.remove('hidden');
+    });
+  }
+
+  if (btnOnlineClose) {
+    btnOnlineClose.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onlineModal.classList.add('hidden');
+      networkManager.disconnect();
+    });
+  }
+
+  // ホスト: 部屋作成
+  if (btnCreateRoom) {
+    btnCreateRoom.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onlineSelectView.classList.add('hidden');
+      onlineHostView.classList.remove('hidden');
+      if (hostStatusText) hostStatusText.innerText = 'ルーム作成中...';
+
+      networkManager.createRoom(
+        (roomId) => {
+          if (roomIdText) roomIdText.innerText = roomId;
+          if (hostStatusText) hostStatusText.innerText = '相手の接続を待っています…';
+          // 接続確立時のコールバック
+          networkManager.conn?.on('open', () => {
+            onlineModal.classList.add('hidden');
+            startGame();
+          });
+        },
+        (err) => {
+          if (hostStatusText) hostStatusText.innerText = '作成失敗: 再試行してください';
+        }
+      );
+    });
+  }
+
+  if (btnCopyRoomId) {
+    btnCopyRoomId.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (networkManager.roomId) {
+        navigator.clipboard?.writeText(networkManager.roomId);
+        btnCopyRoomId.innerText = '✓ コピー完了!';
+        setTimeout(() => { btnCopyRoomId.innerText = '📋 コピー'; }, 1800);
+      }
+    });
+  }
+
+  if (btnHostCancel) {
+    btnHostCancel.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      networkManager.disconnect();
+      resetOnlineModalViews();
+    });
+  }
+
+  // ゲスト: 部屋参加
+  if (btnJoinRoom) {
+    btnJoinRoom.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onlineSelectView.classList.add('hidden');
+      onlineGuestView.classList.remove('hidden');
+      if (roomIdInput) { roomIdInput.value = ''; roomIdInput.focus(); }
+    });
+  }
+
+  if (btnConnectRoom) {
+    btnConnectRoom.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const code = roomIdInput ? roomIdInput.value.trim() : '';
+      if (code.length < 6) {
+        alert('6桁のルームIDを入力してください');
+        return;
+      }
+      if (guestStatus) guestStatus.classList.remove('hidden');
+      if (guestStatusText) guestStatusText.innerText = 'ホストへ接続中...';
+
+      networkManager.joinRoom(
+        code,
+        () => {
+          // 接続成功
+          if (guestStatusText) guestStatusText.innerText = '接続完了！ゲーム開始...';
+          setTimeout(() => {
+            onlineModal.classList.add('hidden');
+            startGame();
+          }, 600);
+        },
+        (err) => {
+          if (guestStatusText) guestStatusText.innerText = '接続失敗: IDを確認してください';
+        }
+      );
+    });
+  }
+
+  if (btnGuestCancel) {
+    btnGuestCancel.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      networkManager.disconnect();
+      resetOnlineModalViews();
+    });
+  }
+
   btnOpenMenu.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     state.mode = GAME_MODE.PAUSED;
@@ -3445,93 +4198,90 @@ function setupControls(player) {
     uiLayer.classList.add('hidden');
     titleScreen.classList.remove('hidden');
     state.mode = GAME_MODE.TITLE;
+    networkManager.disconnect();
     player.group.position.set(0, 0, 0);
   }
 
   btnReturnTitle.addEventListener('pointerdown', (e) => { e.preventDefault(); returnToTitle(); });
   btnGoTitle.addEventListener('pointerdown', (e) => { e.preventDefault(); returnToTitle(); });
 
-  retryBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); player.respawn(); });
-
-  // 魔法ボタン
-  ['explosion', 'flame', 'ice', 'wind', 'thunder'].forEach(key => {
-    const btn = document.getElementById(`btn-magic-${key}`);
-    if (btn) {
-      btn.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        player.castMagic(key);
-      });
-    }
+  retryBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    player.respawn();
+    stageManager.startStage(state.currentStageIdx);
   });
 
   // ジョイスティック
-  const joystickZone = document.getElementById('joystick-zone');
-  const joystickKnob = document.getElementById('joystick-knob');
-  const attackBtn = document.getElementById('btn-attack');
-  let touchId = null;
-  let center = { x: 0, y: 0 };
-  const maxRadius = 46;
+  const joyZone = document.getElementById('joystick-zone');
+  const joyKnob = document.getElementById('joystick-knob');
+  let joyActive = false;
+  let joyOrigin = { x: 0, y: 0 };
 
-  joystickZone.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    if (touchId === null) {
-      touchId = e.pointerId;
-      joystickZone.setPointerCapture(e.pointerId);
-      const rect = joystickZone.getBoundingClientRect();
-      center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    }
+  joyZone.addEventListener('pointerdown', (e) => {
+    joyActive = true;
+    joyZone.setPointerCapture(e.pointerId);
+    const rect = joyZone.getBoundingClientRect();
+    joyOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    handleJoyMove(e);
   });
 
-  joystickZone.addEventListener('pointermove', (e) => {
-    e.preventDefault();
-    if (touchId === e.pointerId) {
-      const deltaX = e.clientX - center.x;
-      const deltaY = e.clientY - center.y;
-      const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-      const angle = Math.atan2(deltaY, deltaX);
-      const clampedDist = Math.min(dist, maxRadius);
-      const knobX = Math.cos(angle) * clampedDist;
-      const knobY = Math.sin(angle) * clampedDist;
-
-      joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
-      state.moveVector.x = knobX / maxRadius;
-      state.moveVector.y = -knobY / maxRadius;
-    }
+  joyZone.addEventListener('pointermove', (e) => {
+    if (!joyActive) return;
+    handleJoyMove(e);
   });
 
-  const stopJoystick = (e) => {
-    if (touchId === e.pointerId) {
-      touchId = null;
-      joystickZone.releasePointerCapture(e.pointerId);
-      joystickKnob.style.transform = 'translate(0px, 0px)';
-      state.moveVector.set(0, 0);
-    }
+  const joyEnd = () => {
+    joyActive = false;
+    state.moveVector.set(0, 0);
+    joyKnob.style.transform = 'translate(0px, 0px)';
   };
-  joystickZone.addEventListener('pointerup', stopJoystick);
-  joystickZone.addEventListener('pointercancel', stopJoystick);
+  joyZone.addEventListener('pointerup', joyEnd);
+  joyZone.addEventListener('pointercancel', joyEnd);
 
-  attackBtn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    player.attack();
-  });
+  function handleJoyMove(e) {
+    const maxRadius = 40;
+    const dx = e.clientX - joyOrigin.x;
+    const dy = e.clientY - joyOrigin.y;
+    const dist = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius);
+    const angle = Math.atan2(dy, dx);
 
-  // ダッシュボタン（モバイル）
-  const dashBtn = document.getElementById('btn-dash');
-  if (dashBtn) {
-    dashBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      player.dash();
-    });
+    const kx = Math.cos(angle) * dist;
+    const ky = Math.sin(angle) * dist;
+    joyKnob.style.transform = `translate(${kx}px, ${ky}px)`;
+
+    const inputLen = dist / maxRadius;
+    state.moveVector.set(Math.cos(angle) * inputLen, Math.sin(angle) * inputLen);
   }
 
+  // アクションボタン
+  const btnAttack = document.getElementById('btn-attack');
+  const btnDash = document.getElementById('btn-dash');
+
+  btnAttack.addEventListener('pointerdown', (e) => { e.preventDefault(); player.attack(); });
+  if (btnDash) {
+    btnDash.addEventListener('pointerdown', (e) => { e.preventDefault(); player.dash(); });
+  }
+
+  // 魔法スロット
+  const magicSlots = document.querySelectorAll('.magic-slot');
+  magicSlots.forEach((slot) => {
+    slot.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const magicKey = slot.dataset.magic;
+      if (magicKey) player.castMagic(magicKey);
+    });
+  });
+
+  // キーボード
   window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
     switch (e.code) {
       case 'KeyW': case 'ArrowUp': state.keys.forward = true; break;
       case 'KeyS': case 'ArrowDown': state.keys.backward = true; break;
       case 'KeyA': case 'ArrowLeft': state.keys.left = true; break;
       case 'KeyD': case 'ArrowRight': state.keys.right = true; break;
       case 'Space': case 'KeyJ': player.attack(); break;
-      case 'ShiftLeft': case 'ShiftRight': case 'KeyX': player.dash(); break; // Shift or X でダッシュ
+      case 'ShiftLeft': case 'ShiftRight': case 'KeyK': player.dash(); break;
       case 'KeyQ': case 'Digit1': player.castMagic('explosion'); break;
       case 'KeyE': case 'Digit2': player.castMagic('flame'); break;
       case 'KeyR': case 'Digit3': player.castMagic('ice'); break;
@@ -3708,7 +4458,7 @@ class MinimapRenderer {
       ctx.stroke();
     });
 
-    // ---- 静的オブジェクト (薄グレー点) — ランダムサンプリングで負荷抓制 ----
+    // ---- 静的オブジェクト (薄グレー点) — ランダムサンプリングで負荷抑制 ----
     ctx.fillStyle = 'rgba(120,120,120,0.35)';
     const step = Math.max(1, Math.floor(worldStaticObjects.length / 80)); // 最大 80点描画
     for (let i = 0; i < worldStaticObjects.length; i += step) {
@@ -3741,6 +4491,17 @@ class MinimapRenderer {
       ctx.fill();
     });
 
+    // ---- 2P リモートプレイヤー (緑点) ----
+    if (state.isMultiplayer && remotePlayer && remotePlayer.group.visible) {
+      const { mx, mz } = this.worldToMap(remotePlayer.group.position.x, remotePlayer.group.position.z, px, pz);
+      if (mx >= 0 && mx <= S && mz >= 0 && mz <= S) {
+        ctx.fillStyle = '#34d399';
+        ctx.beginPath();
+        ctx.arc(mx, mz, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // ---- プレイヤー (白三角) ----
     const rotY = player.group.rotation.y;
     const tSize = 5;
@@ -3772,6 +4533,10 @@ class MinimapRenderer {
 // =============================================================================
 const magicSystem = new MagicSystem();
 const player = new Player();
+const remotePlayer = new RemotePlayer();
+const networkManager = new NetworkManager();
+networkManager.init(remotePlayer);
+
 const enemyManager = new EnemyManager();
 const stageManager = new StageManager();
 const cameraController = new CameraController(camera, player);
@@ -3804,6 +4569,9 @@ function animate() {
 
   if (state.mode === GAME_MODE.PLAYING || state.mode === GAME_MODE.VICTORY) {
     player.update(delta);
+    if (state.isMultiplayer) {
+      remotePlayer.update(delta);
+    }
     enemyManager.update(delta, player.group.position);
     applySeparationPhysics();     // 重なり防止コリジョン
     magicSystem.update(rawDelta);
@@ -3818,3 +4586,4 @@ function animate() {
 }
 
 animate();
+
