@@ -1305,6 +1305,11 @@ class Player {
 
     // 全パーツにシャドウ設定
     this.group.traverse(obj => { if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; } });
+
+    // スラッシュエフェクトは純粋なUIエフェクトなので影は落とさない
+    // (traverse後に上書きすることで攻撃前の影投影を防ぐ)
+    this.slashMesh.castShadow = false;
+    this.slashMesh.receiveShadow = false;
   }
 
   update(delta) {
