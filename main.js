@@ -775,13 +775,60 @@ class SoundManager {
     osc.stop(now + 0.10);
   }
 
+  // 魔法専用ディストーションカーブ生成 (音圧と荒々しさを強化)
+  makeDistortionCurve(amount = 20) {
+    const k = typeof amount === 'number' ? amount : 20;
+    const n_samples = 44100;
+    const curve = new Float32Array(n_samples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < n_samples; ++i) {
+      const x = (i * 2) / n_samples - 1;
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+  }
+
+  // 🔊 映画・AAA級ゲームクオリティの超大迫力魔法サウンド
   playMagicSound(element, tier = 1) {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
+    const sfx = this.sfxGain;
 
     if (element === 'explosion') {
-      // 💥 爆発: 超低周波サブベース衝撃波 + 破裂ノイズ
-      const bufferSize = this.ctx.sampleRate * (0.35 + tier * 0.2);
+      // 💥 爆発: 4層ハイブリッド (超低周波サブベース地鳴り + 歪み破裂アタック + 爆風ノイズ + 低音ロール)
+      const duration = 0.55 + tier * 0.25;
+
+      // Layer 1: 腹にズシンと響くサブベースインパルス (65Hz -> 18Hz)
+      const sub = this.ctx.createOscillator();
+      const subGain = this.ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(85 + tier * 25, now);
+      sub.frequency.exponentialRampToValueAtTime(16, now + duration);
+      subGain.gain.setValueAtTime(1.3 + tier * 0.4, now);
+      subGain.gain.exponentialRampToValueAtTime(0.005, now + duration);
+      sub.connect(subGain);
+      subGain.connect(sfx);
+      sub.start(now);
+      sub.stop(now + duration + 0.05);
+
+      // Layer 2: 歪み破裂パンチ (WaveShaperオーバードライブ)
+      const punchOsc = this.ctx.createOscillator();
+      const punchDist = this.ctx.createWaveShaper();
+      const punchGain = this.ctx.createGain();
+      punchDist.curve = this.makeDistortionCurve(35 + tier * 15);
+      punchOsc.type = 'sawtooth';
+      punchOsc.frequency.setValueAtTime(260 + tier * 60, now);
+      punchOsc.frequency.exponentialRampToValueAtTime(30, now + 0.28);
+      punchGain.gain.setValueAtTime(0.9 + tier * 0.3, now);
+      punchGain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
+      punchOsc.connect(punchDist);
+      punchDist.connect(punchGain);
+      punchGain.connect(sfx);
+      punchOsc.start(now);
+      punchOsc.stop(now + 0.3);
+
+      // Layer 3: 轟音爆風ホワイトノイズ (ローパスレゾナンススイープ)
+      const bufferSize = this.ctx.sampleRate * duration;
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -790,102 +837,206 @@ class SoundManager {
 
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1200 + tier * 300, now);
-      filter.frequency.exponentialRampToValueAtTime(35, now + 0.45 + tier * 0.15);
+      filter.Q.value = 3.5; // レゾナンスで迫力倍増
+      filter.frequency.setValueAtTime(1600 + tier * 500, now);
+      filter.frequency.exponentialRampToValueAtTime(45, now + duration);
 
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(1.0 + tier * 0.35, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5 + tier * 0.15);
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(1.1 + tier * 0.4, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
 
       noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.sfxGain);
+      filter.connect(noiseGain);
+      noiseGain.connect(sfx);
       noise.start(now);
-      noise.stop(now + 0.55 + tier * 0.15);
-
-      // サブベースキック
-      const sub = this.ctx.createOscillator();
-      const subGain = this.ctx.createGain();
-      sub.type = 'sine';
-      sub.frequency.setValueAtTime(180, now);
-      sub.frequency.exponentialRampToValueAtTime(25, now + 0.35);
-      subGain.gain.setValueAtTime(0.8, now);
-      subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-      sub.connect(subGain);
-      subGain.connect(this.sfxGain);
-      sub.start(now);
-      sub.stop(now + 0.36);
+      noise.stop(now + duration + 0.05);
 
     } else if (element === 'flame') {
-      // 🔥 火炎: 激しい噴射ホワイトノイズ + 燃焼うなり
-      const bufferSize = this.ctx.sampleRate * (0.3 + tier * 0.15);
+      // 🔥 火炎: 3層構造 (着火シュパッ + ジェットバーナー爆轟 + 燃焼うねり)
+      const duration = 0.45 + tier * 0.2;
+
+      // Layer 1: 着火スナップ
+      const snap = this.ctx.createOscillator();
+      const snapGain = this.ctx.createGain();
+      snap.type = 'triangle';
+      snap.frequency.setValueAtTime(950, now);
+      snap.frequency.exponentialRampToValueAtTime(120, now + 0.08);
+      snapGain.gain.setValueAtTime(0.8, now);
+      snapGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+      snap.connect(snapGain);
+      snapGain.connect(sfx);
+      snap.start(now);
+      snap.stop(now + 0.09);
+
+      // Layer 2: ジェットバーナー噴射ノイズ
+      const bufferSize = this.ctx.sampleRate * duration;
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
       const noise = this.ctx.createBufferSource();
       noise.buffer = buffer;
 
-      const filter = this.ctx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(800, now);
-      filter.frequency.exponentialRampToValueAtTime(250, now + 0.35);
+      const bpFilter = this.ctx.createBiquadFilter();
+      bpFilter.type = 'bandpass';
+      bpFilter.Q.value = 2.2;
+      bpFilter.frequency.setValueAtTime(1200 + tier * 300, now);
+      bpFilter.frequency.exponentialRampToValueAtTime(220, now + duration);
 
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.85 + tier * 0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38 + tier * 0.1);
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(1.1 + tier * 0.35, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
 
-      noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.sfxGain);
+      noise.connect(bpFilter);
+      bpFilter.connect(noiseGain);
+      noiseGain.connect(sfx);
       noise.start(now);
-      noise.stop(now + 0.4 + tier * 0.1);
+      noise.stop(now + duration + 0.05);
+
+      // Layer 3: 熱波重低音
+      const bass = this.ctx.createOscillator();
+      const bassGain = this.ctx.createGain();
+      bass.type = 'sawtooth';
+      bass.frequency.setValueAtTime(140 + tier * 30, now);
+      bass.frequency.exponentialRampToValueAtTime(35, now + duration);
+      bassGain.gain.setValueAtTime(0.7, now);
+      bassGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+      bass.connect(bassGain);
+      bassGain.connect(sfx);
+      bass.start(now);
+      bass.stop(now + duration);
 
     } else if (element === 'ice') {
-      // ❄️ 氷: 高周波クリスタル粉砕音 (キラキラ音 + 凍結亀裂)
-      const freqs = [1800, 2400, 3200, 4200];
+      // ❄️ 氷: 3層構造 (クリスタル超高音亀裂 + 重氷山隆起地鳴り + 凍結シャープノイズ)
+      const duration = 0.5 + tier * 0.2;
+
+      // Layer 1: クリスタル多重亀裂音
+      const freqs = [3800, 2900, 2200, 1500, 880];
       freqs.forEach((freq, idx) => {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
-        osc.frequency.exponentialRampToValueAtTime(400, now + idx * 0.04 + 0.2);
-        gain.gain.setValueAtTime(0.4, now + idx * 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.04 + 0.2);
+        osc.frequency.setValueAtTime(freq, now + idx * 0.035);
+        osc.frequency.exponentialRampToValueAtTime(200, now + idx * 0.035 + 0.22);
+        gain.gain.setValueAtTime(0.55 + tier * 0.1, now + idx * 0.035);
+        gain.gain.exponentialRampToValueAtTime(0.005, now + idx * 0.035 + 0.22);
         osc.connect(gain);
-        gain.connect(this.sfxGain);
-        osc.start(now + idx * 0.04);
-        osc.stop(now + idx * 0.04 + 0.22);
+        gain.connect(sfx);
+        osc.start(now + idx * 0.035);
+        osc.stop(now + idx * 0.035 + 0.24);
       });
 
+      // Layer 2: 氷山・氷柱の重低音ドスンインパルス
+      const thud = this.ctx.createOscillator();
+      const thudGain = this.ctx.createGain();
+      thud.type = 'triangle';
+      thud.frequency.setValueAtTime(110 + tier * 25, now + 0.05);
+      thud.frequency.exponentialRampToValueAtTime(25, now + 0.35);
+      thudGain.gain.setValueAtTime(0.95 + tier * 0.3, now + 0.05);
+      thudGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      thud.connect(thudGain);
+      thudGain.connect(sfx);
+      thud.start(now + 0.05);
+      thud.stop(now + 0.38);
+
     } else if (element === 'wind') {
-      // 🌪️ 風: 鋭い風切り真空音 (ピッチ急降下)
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1400 + tier * 300, now);
-      osc.frequency.exponentialRampToValueAtTime(120, now + 0.25);
-      gain.gain.setValueAtTime(0.7 + tier * 0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-      osc.connect(gain);
-      gain.connect(this.sfxGain);
-      osc.start(now);
-      osc.stop(now + 0.26);
+      // 🌪️ 風: 3層構造 (超音速真空刃スナップ + 渦巻く竜巻ピッチスイープ + 突風圧)
+      const duration = 0.42 + tier * 0.18;
+
+      // Layer 1: 音速突破真空刃
+      const snap = this.ctx.createOscillator();
+      const snapGain = this.ctx.createGain();
+      snap.type = 'sawtooth';
+      snap.frequency.setValueAtTime(2200 + tier * 400, now);
+      snap.frequency.exponentialRampToValueAtTime(80, now + 0.22);
+      snapGain.gain.setValueAtTime(0.85 + tier * 0.25, now);
+      snapGain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+      snap.connect(snapGain);
+      snapGain.connect(sfx);
+      snap.start(now);
+      snap.stop(now + 0.24);
+
+      // Layer 2: 渦巻く突風ノイズ
+      const bufferSize = this.ctx.sampleRate * duration;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const hpFilter = this.ctx.createBiquadFilter();
+      hpFilter.type = 'bandpass';
+      hpFilter.Q.value = 4.0; // 鋭い風鳴り
+      hpFilter.frequency.setValueAtTime(1800, now);
+      hpFilter.frequency.exponentialRampToValueAtTime(320, now + duration);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(1.0 + tier * 0.3, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+      noise.connect(hpFilter);
+      hpFilter.connect(noiseGain);
+      noiseGain.connect(sfx);
+      noise.start(now);
+      noise.stop(now + duration + 0.05);
 
     } else if (element === 'thunder') {
-      // ⚡ 雷: 鋭いスパーク放電 + 轟く雷鳴
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(2600, now);
-      osc.frequency.exponentialRampToValueAtTime(90, now + 0.35 + tier * 0.15);
-      gain.gain.setValueAtTime(0.9 + tier * 0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38 + tier * 0.15);
-      osc.connect(gain);
-      gain.connect(this.sfxGain);
-      osc.start(now);
-      osc.stop(now + 0.4 + tier * 0.15);
+      // ⚡ 雷: 3層構造 (耳をつんざく超高圧プラズマ放電 + 轟沈雷鳴サブベース + 放電スパーク)
+      const duration = 0.5 + tier * 0.25;
+
+      // Layer 1: 超高圧放電アタック (激しいディストーション)
+      const crack = this.ctx.createOscillator();
+      const dist = this.ctx.createWaveShaper();
+      const crackGain = this.ctx.createGain();
+      dist.curve = this.makeDistortionCurve(50 + tier * 20);
+      crack.type = 'sawtooth';
+      crack.frequency.setValueAtTime(3400, now);
+      crack.frequency.exponentialRampToValueAtTime(160, now + 0.18);
+      crackGain.gain.setValueAtTime(1.2 + tier * 0.4, now);
+      crackGain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+      crack.connect(dist);
+      dist.connect(crackGain);
+      crackGain.connect(sfx);
+      crack.start(now);
+      crack.stop(now + 0.24);
+
+      // Layer 2: 轟く地響き雷鳴 (40Hz -> 18Hz)
+      const rumble = this.ctx.createOscillator();
+      const rumbleGain = this.ctx.createGain();
+      rumble.type = 'triangle';
+      rumble.frequency.setValueAtTime(90 + tier * 30, now + 0.04);
+      rumble.frequency.exponentialRampToValueAtTime(20, now + duration);
+      rumbleGain.gain.setValueAtTime(1.0 + tier * 0.4, now + 0.04);
+      rumbleGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+      rumble.connect(rumbleGain);
+      rumbleGain.connect(sfx);
+      rumble.start(now + 0.04);
+      rumble.stop(now + duration + 0.05);
+
+      // Layer 3: スパーク破裂ノイズ
+      const bufferSize = this.ctx.sampleRate * duration;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const lpFilter = this.ctx.createBiquadFilter();
+      lpFilter.type = 'lowpass';
+      lpFilter.frequency.setValueAtTime(2400, now);
+      lpFilter.frequency.exponentialRampToValueAtTime(60, now + duration);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.9 + tier * 0.3, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+      noise.connect(lpFilter);
+      lpFilter.connect(noiseGain);
+      noiseGain.connect(sfx);
+      noise.start(now);
+      noise.stop(now + duration + 0.05);
     }
   }
+
 
 
   playWeakHit() {
