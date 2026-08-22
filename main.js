@@ -104,7 +104,7 @@ const state = {
   hitStopTimer: 0,
   slowMoTimer: 0,
   moveVector: new THREE.Vector2(0, 0),
-  keys: { forward: false, backward: false, left: false, right: false, dash: false },
+  keys: { forward: false, backward: false, left: false, right: false, dash: false, guard: false },
   controlSensitivity: 1.0,
 
   // ダッシュ状態
@@ -112,6 +112,9 @@ const state = {
   dashTimer: 0,
   dashCooldownTimer: 0,
   dashDirection: new THREE.Vector3(),
+
+  // ガード (盾構え) 状態
+  isGuarding: false,
 
   // オンラインマルチプレイ状態
   isMultiplayer: false,
@@ -630,6 +633,42 @@ class SoundManager {
     gain.connect(this.sfxGain);
     osc.start();
     osc.stop(this.ctx.currentTime + 0.19);
+  }
+
+  // 盾ガード成功時の鋭い金属音「ガキィンッ！」(2層合成)
+  playShieldBlock() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // 層 1: 金属衝突の鋭いアタック高周波
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(980, now);
+    osc.frequency.exponentialRampToValueAtTime(320, now + 0.14);
+
+    gain.gain.setValueAtTime(0.9, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.16);
+
+    // 層 2: 金属の共鳴ベル音 (高音リング)
+    const bellOsc = this.ctx.createOscillator();
+    const bellGain = this.ctx.createGain();
+    bellOsc.type = 'sine';
+    bellOsc.frequency.setValueAtTime(1760, now);
+    bellOsc.frequency.exponentialRampToValueAtTime(1400, now + 0.28);
+
+    bellGain.gain.setValueAtTime(0.4, now);
+    bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+    bellOsc.connect(bellGain);
+    bellGain.connect(this.sfxGain);
+    bellOsc.start(now);
+    bellOsc.stop(now + 0.29);
   }
 
   // ボス死亡時の「ぐわー！！」雄たけび (低音フォルマント合成)
@@ -1425,6 +1464,42 @@ class Player {
     leftHand.position.set(-0.05, -0.72, 0);
     this.leftArmPivot.add(leftHand);
 
+    // 🛡️ 盾 (シールド) メッシュ
+    this.shieldGroup = new THREE.Group();
+    this.shieldGroup.position.set(-0.08, -0.48, 0.12);
+    this.shieldGroup.rotation.set(0, -Math.PI / 5, 0);
+
+    // 盾本体 (プレート)
+    const shieldPlateGeo = new THREE.BoxGeometry(0.52, 0.72, 0.05);
+    const shieldPlateMat = new THREE.MeshStandardMaterial({
+      color: 0x1e3a8a,      // ロイヤルブルーメタル
+      roughness: 0.3,
+      metalness: 0.8,
+    });
+    const shieldPlate = new THREE.Mesh(shieldPlateGeo, shieldPlateMat);
+    this.shieldGroup.add(shieldPlate);
+
+    // 盾フレーム (ゴールド縁取り)
+    const shieldRimGeo = new THREE.BoxGeometry(0.56, 0.76, 0.035);
+    const shieldRimMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,      // ゴールド
+      roughness: 0.2,
+      metalness: 0.95,
+    });
+    const shieldRim = new THREE.Mesh(shieldRimGeo, shieldRimMat);
+    shieldRim.position.z = -0.012;
+    this.shieldGroup.add(shieldRim);
+
+    // 盾中央のボスエンブレム
+    const bossGeo = new THREE.ConeGeometry(0.12, 0.08, 6);
+    const bossMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.15, metalness: 0.95 });
+    const boss = new THREE.Mesh(bossGeo, bossMat);
+    boss.rotation.x = Math.PI / 2;
+    boss.position.z = 0.04;
+    this.shieldGroup.add(boss);
+
+    this.leftArmPivot.add(this.shieldGroup);
+
     // ====================================
     // 右腕 (Sword Side) ピボット付き
     // ====================================
@@ -1630,13 +1705,14 @@ class Player {
         }
       }
     } else if (isMoving) {
-      // 通常移動
+      // 通常移動 (ガード中は速度45%に抑制)
       soundManager.unlock();
+      const speedMult = state.isGuarding ? 0.45 : 1.0;
       const worldX = -screenX / (inputLen > 1 ? inputLen : 1);
       const worldZ = screenZ / (inputLen > 1 ? inputLen : 1);
 
-      this.velocity.x = worldX * CONFIG.playerSpeed * state.controlSensitivity;
-      this.velocity.z = worldZ * CONFIG.playerSpeed * state.controlSensitivity;
+      this.velocity.x = worldX * CONFIG.playerSpeed * state.controlSensitivity * speedMult;
+      this.velocity.z = worldZ * CONFIG.playerSpeed * state.controlSensitivity * speedMult;
 
       const targetRot = Math.atan2(worldX, worldZ);
       let diff = targetRot - this.group.rotation.y;
@@ -1647,7 +1723,7 @@ class Player {
       this.group.position.x += this.velocity.x * delta;
       this.group.position.z += this.velocity.z * delta;
 
-      this.walkCycle += delta * 12;
+      this.walkCycle += delta * (state.isGuarding ? 6 : 12);
     } else {
       this.velocity.set(0, 0, 0);
       this.walkCycle += delta * 2;
@@ -1670,7 +1746,7 @@ class Player {
     if (state.isAttacking) {
       this.updateAttackAnimation(delta);
     } else if (!state.isDashing) {
-      // 歩行アニメーションを実行（足・腕・胴の連動）
+      // 歩行・ガードアニメーションを実行（足・腕・胴の連動）
       this.animateWalk(delta, isMoving);
     }
   }
@@ -1753,8 +1829,68 @@ class Player {
     }
   }
 
+  // ガード時のシールドバリア光輪火花エフェクト
+  spawnShieldSpark() {
+    const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
+    const shieldPos = this.group.position.clone().add(forward.clone().multiplyScalar(0.7)).add(new THREE.Vector3(0, 1.1, 0));
+
+    // シールドバリア光輪リング
+    const ringGeo = new THREE.RingGeometry(0.3, 0.85, 16);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    ringMesh.position.copy(shieldPos);
+    ringMesh.rotation.y = this.group.rotation.y;
+    scene.add(ringMesh);
+
+    // 火花アニメーション
+    let life = 0.22;
+    const sparkInterval = setInterval(() => {
+      life -= 0.03;
+      ringMesh.scale.multiplyScalar(1.08);
+      ringMat.opacity = Math.max(0, life / 0.22);
+      if (life <= 0) {
+        clearInterval(sparkInterval);
+        scene.remove(ringMesh);
+      }
+    }, 30);
+  }
+
   takeDamage(amount, fromPos) {
     if (this.invincibleTimer > 0 || state.mode === GAME_MODE.GAMEOVER) return;
+
+    // 🛡️ ガード判定 (正面からの攻撃を85%軽減・金属音・火花)
+    if (state.isGuarding && fromPos) {
+      const playerForward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
+      const toAttacker = new THREE.Vector3().subVectors(fromPos, this.group.position).normalize();
+      toAttacker.y = 0;
+
+      // 正面150度以内からの攻撃をガード
+      if (playerForward.dot(toAttacker) >= -0.25) {
+        const blockedDmg = Math.max(0, Math.floor(amount * 0.15)); // 85%ダメージカット
+        this.hp = Math.max(0, this.hp - blockedDmg);
+        this.invincibleTimer = 0.35; // ガード時の無敵時間は短め
+
+        soundManager.playShieldBlock();
+        cameraController.shake(0.16);
+        showDamagePopup(this.group.position, blockedDmg > 0 ? `🛡️BLOCK -${blockedDmg}` : '🛡️GUARD!', 'resist');
+        this.spawnShieldSpark();
+
+        // 軽いガードノックバック
+        const knockDir = new THREE.Vector3().subVectors(this.group.position, fromPos).normalize();
+        this.group.position.addScaledVector(knockDir, 0.35);
+
+        updateStatusHUD();
+        if (this.hp <= 0) this.die();
+        return;
+      }
+    }
 
     this.hp = Math.max(0, this.hp - amount);
     this.invincibleTimer = 1.0;
@@ -1859,17 +1995,27 @@ class Player {
     }
   }
 
-  // 歩行アニメーション (walkCycleに連動して足・腕・胴を動かす)
+  // 歩行・ガードアニメーション (walkCycleに連動して足・腕・胴を動かす)
   animateWalk(delta, isMoving) {
     if (!this.leftLeg || !this.rightLeg) return;
     const speed = isMoving ? 12 : 2;
     this.walkCycle += delta * speed;
     const swing = isMoving ? 0.35 : 0.06;
+
     // 足を前後に振る
     this.leftLeg.rotation.x  =  Math.sin(this.walkCycle) * swing;
     this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * swing;
-    // 左腕は右足と逆相に振る
-    if (this.leftArmPivot) this.leftArmPivot.rotation.x = -Math.sin(this.walkCycle) * swing * 0.7;
+
+    // 🛡️ ガード構えポーズ または 通常歩行腕振り
+    if (state.isGuarding) {
+      // 盾を体の正面にグッと構える
+      if (this.leftArmPivot) this.leftArmPivot.rotation.set(0.65, 0.95, -0.35);
+      if (this.rightArmPivot && !state.isAttacking) this.rightArmPivot.rotation.set(0.2, -0.3, 0.2);
+    } else {
+      // 左腕は右足と逆相に振る
+      if (this.leftArmPivot) this.leftArmPivot.rotation.set(-Math.sin(this.walkCycle) * swing * 0.7, 0, 0);
+    }
+
     // ボディの上下動 (歩行感)
     if (this.body) this.body.position.y = 0.8 + (isMoving ? Math.abs(Math.sin(this.walkCycle * 2)) * 0.06 : Math.sin(this.walkCycle) * 0.025);
   }
@@ -1940,6 +2086,7 @@ class RemotePlayer {
     this.targetRotY = 0;
     this.walkCycle = 0;
     this.isMoving = false;
+    this.isGuarding = false;
     this.isAttacking = false;
     this.attackTimer = 0;
     this.comboStep = 0;
@@ -1991,6 +2138,23 @@ class RemotePlayer {
     const lArm = new THREE.Mesh(armGeo, armorMat);
     lArm.position.y = -0.22;
     this.leftArmPivot.add(lArm);
+
+    // 🛡️ 2P 盾 (エメラルドシールド)
+    const p2ShieldGroup = new THREE.Group();
+    p2ShieldGroup.position.set(-0.08, -0.42, 0.12);
+    p2ShieldGroup.rotation.set(0, -Math.PI / 5, 0);
+
+    const p2PlateGeo = new THREE.BoxGeometry(0.52, 0.72, 0.05);
+    const p2PlateMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.3, metalness: 0.8 });
+    p2ShieldGroup.add(new THREE.Mesh(p2PlateGeo, p2PlateMat));
+
+    const p2RimGeo = new THREE.BoxGeometry(0.56, 0.76, 0.035);
+    const p2RimMat = new THREE.MeshStandardMaterial({ color: 0x34d399, roughness: 0.2, metalness: 0.95 });
+    const p2Rim = new THREE.Mesh(p2RimGeo, p2RimMat);
+    p2Rim.position.z = -0.012;
+    p2ShieldGroup.add(p2Rim);
+
+    this.leftArmPivot.add(p2ShieldGroup);
     this.body.add(this.leftArmPivot);
 
     this.rightArmPivot = new THREE.Group();
@@ -2146,14 +2310,19 @@ class RemotePlayer {
     // 地形高さ追従
     this.group.position.y = getTerrainHeight(this.group.position.x, this.group.position.z);
 
-    // 歩行アニメーション
+    // 歩行・ガードアニメーション
     if (this.leftLeg && this.rightLeg) {
       const speed = this.isMoving ? 12 : 2;
       this.walkCycle += delta * speed;
       const swing = this.isMoving ? 0.35 : 0.06;
       this.leftLeg.rotation.x = Math.sin(this.walkCycle) * swing;
       this.rightLeg.rotation.x = -Math.sin(this.walkCycle) * swing;
-      if (this.leftArmPivot) this.leftArmPivot.rotation.x = -Math.sin(this.walkCycle) * swing * 0.7;
+
+      if (this.isGuarding) {
+        if (this.leftArmPivot) this.leftArmPivot.rotation.set(0.65, 0.95, -0.35);
+      } else {
+        if (this.leftArmPivot) this.leftArmPivot.rotation.set(-Math.sin(this.walkCycle) * swing * 0.7, 0, 0);
+      }
     }
 
     // 攻撃アニメーション
@@ -2173,6 +2342,7 @@ class RemotePlayer {
     }
   }
 }
+
 
 // =============================================================================
 // 6.6 ネットワークマネージャー (WebRTC PeerJS 通信管理)
@@ -2321,6 +2491,7 @@ class NetworkManager {
         rotY: Math.round(player.group.rotation.y * 100) / 100,
         isMoving,
         isDashing: state.isDashing,
+        isGuarding: state.isGuarding,
         hp: player.hp,
         maxHp: player.maxHp,
       });
@@ -2398,6 +2569,7 @@ class NetworkManager {
         this.remotePlayer.targetPos.set(msg.x, getTerrainHeight(msg.x, msg.z), msg.z);
         this.remotePlayer.targetRotY = msg.rotY;
         this.remotePlayer.isMoving = msg.isMoving;
+        if (msg.isGuarding !== undefined) this.remotePlayer.isGuarding = !!msg.isGuarding;
         if (msg.hp !== undefined) this.remotePlayer.setHp(msg.hp, msg.maxHp);
         break;
 
@@ -4256,10 +4428,27 @@ function setupControls(player) {
   // アクションボタン
   const btnAttack = document.getElementById('btn-attack');
   const btnDash = document.getElementById('btn-dash');
+  const btnGuard = document.getElementById('btn-guard');
 
   btnAttack.addEventListener('pointerdown', (e) => { e.preventDefault(); player.attack(); });
   if (btnDash) {
     btnDash.addEventListener('pointerdown', (e) => { e.preventDefault(); player.dash(); });
+  }
+  if (btnGuard) {
+    const startGuard = (e) => {
+      e.preventDefault();
+      soundManager.unlock();
+      state.isGuarding = true;
+      btnGuard.classList.add('active');
+    };
+    const endGuard = (e) => {
+      state.isGuarding = false;
+      btnGuard.classList.remove('active');
+    };
+    btnGuard.addEventListener('pointerdown', startGuard);
+    btnGuard.addEventListener('pointerup', endGuard);
+    btnGuard.addEventListener('pointercancel', endGuard);
+    btnGuard.addEventListener('pointerleave', endGuard);
   }
 
   // 魔法スロット
@@ -4280,6 +4469,11 @@ function setupControls(player) {
       case 'KeyS': case 'ArrowDown': state.keys.backward = true; break;
       case 'KeyA': case 'ArrowLeft': state.keys.left = true; break;
       case 'KeyD': case 'ArrowRight': state.keys.right = true; break;
+      case 'KeyL': case 'KeyG':
+        state.keys.guard = true;
+        state.isGuarding = true;
+        if (btnGuard) btnGuard.classList.add('active');
+        break;
       case 'Space': case 'KeyJ': player.attack(); break;
       case 'ShiftLeft': case 'ShiftRight': case 'KeyK': player.dash(); break;
       case 'KeyQ': case 'Digit1': player.castMagic('explosion'); break;
@@ -4296,6 +4490,11 @@ function setupControls(player) {
       case 'KeyS': case 'ArrowDown': state.keys.backward = false; break;
       case 'KeyA': case 'ArrowLeft': state.keys.left = false; break;
       case 'KeyD': case 'ArrowRight': state.keys.right = false; break;
+      case 'KeyL': case 'KeyG':
+        state.keys.guard = false;
+        state.isGuarding = false;
+        if (btnGuard) btnGuard.classList.remove('active');
+        break;
     }
   });
 }
