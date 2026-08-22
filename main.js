@@ -963,7 +963,7 @@ function createOpenWorld() {
   // 地形メッシュ (500x500, 頂点カラーでゾーン勘分け)
   // ===================================================
   const FIELD = 500;
-  const SEG   = 90;  // セグメント数 (负荷バランス)
+  const SEG   = 50;  // セグメント数減 (負荷軽減: 90→ 50で約51*51=2601頂点)
 
   const geo = new THREE.PlaneGeometry(FIELD, FIELD, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
@@ -1170,11 +1170,12 @@ function placeWorldObjects() {
   // ---- 草 (小さなビルボード)を大量に ----
   const grassMat = new THREE.MeshBasicMaterial({ color: 0x5a7a40, side: THREE.DoubleSide });
   const grassGeo = new THREE.PlaneGeometry(0.6, 1.0);
-  const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, 500);
+  const grassCount = isIPad ? 80 : 150; // iPadは更に減らす
+  const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
   grassMesh.castShadow = false;
   const gd = new THREE.Object3D();
 
-  for (let i = 0; i < 500; i++) {
+  for (let i = 0; i < grassCount; i++) {
     const angle = Math.random() * Math.PI * 2;
     const dist  = 5 + Math.random() * 180;
     const x = Math.cos(angle) * dist;
@@ -3138,9 +3139,9 @@ class CameraController {
     this.currentLookAt.lerp(idealLookAt, CONFIG.cameraLerp * 1.5);
     this.camera.lookAt(this.currentLookAt);
 
-    dirLight.position.set(targetPos.x - 12, 18, targetPos.z + 10);
-    dirLight.target.position.copy(targetPos);
-    dirLight.target.updateMatrixWorld();
+    sunLight.position.set(targetPos.x - 12, 80, targetPos.z + 10);
+    sunLight.target.position.copy(targetPos);
+    sunLight.target.updateMatrixWorld();
   }
 }
 
@@ -3627,15 +3628,17 @@ class MinimapRenderer {
       ctx.stroke();
     });
 
-    // ---- 静的オブジェクト (薄グレー点) ----
+    // ---- 静的オブジェクト (薄グレー点) — ランダムサンプリングで負荷抓制 ----
     ctx.fillStyle = 'rgba(120,120,120,0.35)';
-    worldStaticObjects.forEach(obj => {
+    const step = Math.max(1, Math.floor(worldStaticObjects.length / 80)); // 最大 80点描画
+    for (let i = 0; i < worldStaticObjects.length; i += step) {
+      const obj = worldStaticObjects[i];
       const { mx, mz } = this.worldToMap(obj.x, obj.z, px, pz);
-      if (mx < 0 || mx > S || mz < 0 || mz > S) return;
+      if (mx < 0 || mx > S || mz < 0 || mz > S) continue;
       ctx.beginPath();
       ctx.arc(mx, mz, 1.2, 0, Math.PI * 2);
       ctx.fill();
-    });
+    }
 
     // ---- アイテム (緑点) ----
     ctx.fillStyle = '#22c55e';
