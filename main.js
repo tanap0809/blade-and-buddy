@@ -4422,7 +4422,7 @@ function setupControls(player) {
     joyKnob.style.transform = `translate(${kx}px, ${ky}px)`;
 
     const inputLen = dist / maxRadius;
-    state.moveVector.set(Math.cos(angle) * inputLen, Math.sin(angle) * inputLen);
+    state.moveVector.set(Math.cos(angle) * inputLen, -Math.sin(angle) * inputLen);
   }
 
   // アクションボタン
