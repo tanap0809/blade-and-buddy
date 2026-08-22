@@ -780,7 +780,8 @@ class SoundManager {
     const now = this.ctx.currentTime;
 
     if (element === 'explosion') {
-      const bufferSize = this.ctx.sampleRate * (0.3 + tier * 0.15);
+      // 💥 爆発: 超低周波サブベース衝撃波 + 破裂ノイズ
+      const bufferSize = this.ctx.sampleRate * (0.35 + tier * 0.2);
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -789,34 +790,103 @@ class SoundManager {
 
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(800, now);
-      filter.frequency.exponentialRampToValueAtTime(60, now + 0.4);
+      filter.frequency.setValueAtTime(1200 + tier * 300, now);
+      filter.frequency.exponentialRampToValueAtTime(35, now + 0.45 + tier * 0.15);
 
       const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(1.0 + tier * 0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+      gain.gain.setValueAtTime(1.0 + tier * 0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5 + tier * 0.15);
 
       noise.connect(filter);
       filter.connect(gain);
       gain.connect(this.sfxGain);
       noise.start(now);
-      noise.stop(now + 0.45);
-    } else {
+      noise.stop(now + 0.55 + tier * 0.15);
+
+      // サブベースキック
+      const sub = this.ctx.createOscillator();
+      const subGain = this.ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(180, now);
+      sub.frequency.exponentialRampToValueAtTime(25, now + 0.35);
+      subGain.gain.setValueAtTime(0.8, now);
+      subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      sub.connect(subGain);
+      subGain.connect(this.sfxGain);
+      sub.start(now);
+      sub.stop(now + 0.36);
+
+    } else if (element === 'flame') {
+      // 🔥 火炎: 激しい噴射ホワイトノイズ + 燃焼うなり
+      const bufferSize = this.ctx.sampleRate * (0.3 + tier * 0.15);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(800, now);
+      filter.frequency.exponentialRampToValueAtTime(250, now + 0.35);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.85 + tier * 0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38 + tier * 0.1);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.sfxGain);
+      noise.start(now);
+      noise.stop(now + 0.4 + tier * 0.1);
+
+    } else if (element === 'ice') {
+      // ❄️ 氷: 高周波クリスタル粉砕音 (キラキラ音 + 凍結亀裂)
+      const freqs = [1800, 2400, 3200, 4200];
+      freqs.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+        osc.frequency.exponentialRampToValueAtTime(400, now + idx * 0.04 + 0.2);
+        gain.gain.setValueAtTime(0.4, now + idx * 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.04 + 0.2);
+        osc.connect(gain);
+        gain.connect(this.sfxGain);
+        osc.start(now + idx * 0.04);
+        osc.stop(now + idx * 0.04 + 0.22);
+      });
+
+    } else if (element === 'wind') {
+      // 🌪️ 風: 鋭い風切り真空音 (ピッチ急降下)
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      osc.type = element === 'thunder' ? 'square' : (element === 'ice' ? 'sine' : 'sawtooth');
-      osc.frequency.setValueAtTime(element === 'thunder' ? 1800 : (element === 'ice' ? 1400 : 380), now);
-      osc.frequency.exponentialRampToValueAtTime(80, now + 0.28);
-
-      gain.gain.setValueAtTime(0.8, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
-
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1400 + tier * 300, now);
+      osc.frequency.exponentialRampToValueAtTime(120, now + 0.25);
+      gain.gain.setValueAtTime(0.7 + tier * 0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
       osc.connect(gain);
       gain.connect(this.sfxGain);
       osc.start(now);
-      osc.stop(now + 0.3);
+      osc.stop(now + 0.26);
+
+    } else if (element === 'thunder') {
+      // ⚡ 雷: 鋭いスパーク放電 + 轟く雷鳴
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(2600, now);
+      osc.frequency.exponentialRampToValueAtTime(90, now + 0.35 + tier * 0.15);
+      gain.gain.setValueAtTime(0.9 + tier * 0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38 + tier * 0.15);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(now);
+      osc.stop(now + 0.4 + tier * 0.15);
     }
   }
+
 
   playWeakHit() {
     if (!this.ctx) return;
@@ -1985,7 +2055,6 @@ class Player {
     if (this.slashMat) {
       this.slashMat.color.setHex(item.slashColor);
     }
-  }
   }
 
   update(delta) {
@@ -3170,7 +3239,7 @@ class NetworkManager {
 
 
 // =============================================================================
-// 7. 魔法システム (5大属性 × 3段階レベル)
+// 7. 魔法システム (5大属性 × 3段階レベル - プレミアム3Dエフェクト)
 // =============================================================================
 class MagicSystem {
   constructor() {
@@ -3181,78 +3250,15 @@ class MagicSystem {
     const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerAngle);
 
     if (element === 'explosion') {
-      const radius = tier === 3 ? 11.0 : (tier === 2 ? 6.5 : 4.2);
-      const damage = tier === 3 ? 140 : (tier === 2 ? 80 : 45);
-      const targetPos = originPos.clone().addScaledVector(forward, 4.0);
-      this.spawnExplosionEffect(targetPos, tier);
-      this.dealAreaDamage(targetPos, radius, damage, 'explosion', true);
-
+      this.castExplosion(tier, originPos, forward);
     } else if (element === 'flame') {
-      const geo = new THREE.SphereGeometry(0.45, 8, 8);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.copy(originPos).add(new THREE.Vector3(0, 1.2, 0));
-      scene.add(mesh);
-
-      const vel = forward.clone().multiplyScalar(18.0);
-      let life = 1.5;
-
-      this.activeSpells.push({
-        mesh,
-        update: (delta) => {
-          life -= delta;
-          mesh.position.addScaledVector(vel, delta);
-          enemyManager.enemies.forEach((enemy) => {
-            if (!enemy.isDead && !enemy.isDying && enemy.group.position.distanceTo(mesh.position) < 1.4) {
-              enemy.takeDamage(35, forward, 'flame');
-            }
-          });
-          if (life <= 0) {
-            scene.remove(mesh);
-            return false;
-          }
-          return true;
-        }
-      });
-
+      this.castFlame(tier, originPos, forward);
     } else if (element === 'ice') {
-      const geo = new THREE.RingGeometry(0.5, 6.0, 24);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.copy(originPos);
-      mesh.position.y = 0.1;
-      mesh.rotation.x = -Math.PI / 2;
-      scene.add(mesh);
-
-      this.dealAreaDamage(originPos, 6.5, 50, 'ice');
-      enemyManager.enemies.forEach(e => {
-        if (e.group.position.distanceTo(originPos) < 6.5) e.freeze(3.0);
-      });
-
-      this.activeSpells.push({
-        mesh,
-        update: (delta) => {
-          mat.opacity -= delta * 1.5;
-          if (mat.opacity <= 0) {
-            scene.remove(mesh);
-            return false;
-          }
-          return true;
-        }
-      });
-
+      this.castIce(tier, originPos, forward);
     } else if (element === 'wind') {
-      this.dealAreaDamage(originPos, 8.0, 60, 'wind', true);
-      cameraController.shake(0.3);
-
+      this.castWind(tier, originPos, forward);
     } else if (element === 'thunder') {
-      enemyManager.enemies.forEach(target => {
-        if (target.group.position.distanceTo(originPos) < 12.0) {
-          target.takeDamage(55, new THREE.Vector3(0, 0, 0), 'thunder');
-          soundManager.playWeakHit();
-        }
-      });
-      cameraController.shake(0.3);
+      this.castThunder(tier, originPos, forward);
     }
   }
 
@@ -3266,27 +3272,951 @@ class MagicSystem {
     });
   }
 
-  spawnExplosionEffect(pos, tier) {
-    const geo = new THREE.SphereGeometry(tier === 3 ? 4.5 : 2.5, 16, 16);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.9 });
+  // ===========================================================================
+  // 💥 爆発魔法 (Explosion) - 地表魔方陣・多重核熱火球・放射火花パーティクル
+  // ===========================================================================
+  castExplosion(tier, originPos, forward) {
+    const radius = tier === 3 ? 11.0 : (tier === 2 ? 6.5 : 4.2);
+    const damage = tier === 3 ? 140 : (tier === 2 ? 80 : 45);
+    const center = originPos.clone().addScaledVector(forward, tier === 3 ? 5.5 : 4.0);
+    center.y = getTerrainHeight(center.x, center.z);
+
+    this.spawnSingleExplosion(center, tier);
+    this.dealAreaDamage(center, radius, damage, 'explosion', true);
+    cameraController.shake(tier === 3 ? 0.65 : (tier === 2 ? 0.45 : 0.3));
+
+    // Lv2: 0.15秒後に周囲3箇所で連鎖二次爆発
+    if (tier === 2) {
+      setTimeout(() => {
+        for (let i = 0; i < 3; i++) {
+          const ang = (i / 3) * Math.PI * 2 + Math.random() * 0.4;
+          const subPos = center.clone().add(new THREE.Vector3(Math.cos(ang) * 3.5, 0, Math.sin(ang) * 3.5));
+          subPos.y = getTerrainHeight(subPos.x, subPos.z);
+          this.spawnSingleExplosion(subPos, 1);
+          this.dealAreaDamage(subPos, 3.2, 35, 'explosion', false);
+        }
+      }, 150);
+    }
+
+    // Lv3: 画面フラッシュ ＋ 0.18秒後に超巨大核熱セカンドバースト
+    if (tier === 3) {
+      const overlay = document.getElementById('damage-overlay');
+      if (overlay) {
+        overlay.classList.add('is-hit-heavy');
+        setTimeout(() => overlay.classList.remove('is-hit-heavy'), 200);
+      }
+      setTimeout(() => {
+        this.spawnSingleExplosion(center.clone().add(new THREE.Vector3(0, 1.5, 0)), 3);
+        this.dealAreaDamage(center, 12.0, 70, 'explosion', true);
+        cameraController.shake(0.5);
+      }, 180);
+    }
+  }
+
+  spawnSingleExplosion(pos, tier) {
+    const spellGroup = new THREE.Group();
+    spellGroup.position.copy(pos);
+    scene.add(spellGroup);
+
+    // 1. 地表魔方陣 (回転リング)
+    const ringGeo = new THREE.RingGeometry(0.5, tier === 3 ? 7.0 : (tier === 2 ? 4.5 : 3.0), 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const magicCircle = new THREE.Mesh(ringGeo, ringMat);
+    magicCircle.rotation.x = -Math.PI / 2;
+    magicCircle.position.y = 0.08;
+    spellGroup.add(magicCircle);
+
+    // 2. 核熱プラズマ火球 (ホワイトホット中心 ＋ 外部オレンジ球)
+    const coreGeo = new THREE.SphereGeometry(tier === 3 ? 2.5 : 1.4, 16, 16);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.y = 1.0;
+    spellGroup.add(core);
+
+    const outerGeo = new THREE.SphereGeometry(tier === 3 ? 3.8 : 2.2, 16, 16);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    });
+    const outer = new THREE.Mesh(outerGeo, outerMat);
+    outer.position.y = 1.0;
+    spellGroup.add(outer);
+
+    // 3. 膨張衝撃波ドーム
+    const domeGeo = new THREE.SphereGeometry(tier === 3 ? 4.8 : 2.8, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.5);
+    const domeMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const dome = new THREE.Mesh(domeGeo, domeMat);
+    dome.position.y = 0.05;
+    spellGroup.add(dome);
+
+    // 4. 放射火花・破片パーティクル群 (16〜28個)
+    const sparkCount = tier === 3 ? 32 : (tier === 2 ? 22 : 16);
+    const sparks = [];
+    const sparkMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, blending: THREE.AdditiveBlending });
+    for (let i = 0; i < sparkCount; i++) {
+      const spMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), sparkMat);
+      spMesh.position.set(0, 1.0, 0);
+      spellGroup.add(spMesh);
+
+      const phi = Math.random() * Math.PI * 2;
+      const theta = Math.random() * Math.PI * 0.45; // 上方へ放射
+      const speed = (tier === 3 ? 22.0 : 14.0) * (0.6 + Math.random() * 0.8);
+      const vel = new THREE.Vector3(
+        Math.cos(phi) * Math.sin(theta) * speed,
+        Math.cos(theta) * speed + 3.0,
+        Math.sin(phi) * Math.sin(theta) * speed
+      );
+      sparks.push({ mesh: spMesh, vel });
+    }
+
+    // 5. 瞬間発光ライト
+    const light = new THREE.PointLight(0xf97316, tier === 3 ? 5.0 : 3.0, tier === 3 ? 28.0 : 16.0);
+    light.position.y = 2.0;
+    spellGroup.add(light);
+
+    let life = 0.55;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        const progress = Math.max(0, 1.0 - (life / 0.55));
+
+        // コア膨張とフェード
+        core.scale.multiplyScalar(1.0 + delta * 9.0);
+        outer.scale.multiplyScalar(1.0 + delta * 7.5);
+        dome.scale.multiplyScalar(1.0 + delta * 12.0);
+
+        coreMat.opacity = Math.max(0, (1.0 - progress * 1.5));
+        outerMat.opacity = Math.max(0, (1.0 - progress));
+        domeMat.opacity = Math.max(0, (1.0 - progress * 1.3));
+        ringMat.opacity = Math.max(0, (1.0 - progress * 1.2));
+        magicCircle.rotation.z += delta * 4.0;
+        magicCircle.scale.multiplyScalar(1.0 + delta * 3.0);
+
+        light.intensity = Math.max(0, (1.0 - progress) * (tier === 3 ? 5.0 : 3.0));
+
+        // 火花物理移動
+        sparks.forEach(sp => {
+          sp.vel.y -= 38.0 * delta; // 重力
+          sp.mesh.position.addScaledVector(sp.vel, delta);
+          sp.mesh.scale.multiplyScalar(Math.max(0, 1.0 - delta * 2.5));
+        });
+
+        if (life <= 0) {
+          scene.remove(spellGroup);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  // ===========================================================================
+  // 🔥 炎魔法 (Flame) - 灼熱火球トレイル / 3連火炎ピラー / 業火の大渦
+  // ===========================================================================
+  castFlame(tier, originPos, forward) {
+    if (tier === 1) {
+      // Lv1: ファイアボール (高密度コア + 燃焼トレイル + 衝突爆破)
+      const group = new THREE.Group();
+      group.position.copy(originPos).add(new THREE.Vector3(0, 1.1, 0));
+      scene.add(group);
+
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending });
+      const flameMat = new THREE.MeshBasicMaterial({ color: 0xef4444, blending: THREE.AdditiveBlending });
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), coreMat);
+      const outer = new THREE.Mesh(new THREE.SphereGeometry(0.58, 12, 12), flameMat);
+      group.add(core);
+      group.add(outer);
+
+      const light = new THREE.PointLight(0xef4444, 2.5, 12.0);
+      group.add(light);
+
+      const vel = forward.clone().multiplyScalar(22.0);
+      let life = 1.6;
+      let trailTimer = 0;
+
+      this.activeSpells.push({
+        update: (delta) => {
+          life -= delta;
+          group.position.addScaledVector(vel, delta);
+          core.scale.setScalar(1.0 + Math.sin(life * 30) * 0.15);
+
+          // 炎のトレイル粒子生成
+          trailTimer -= delta;
+          if (trailTimer <= 0) {
+            trailTimer = 0.03;
+            this.spawnFlameParticle(group.position);
+          }
+
+          // 敵命中判定
+          let hit = false;
+          enemyManager.enemies.forEach((enemy) => {
+            if (!hit && !enemy.isDead && !enemy.isDying && enemy.group.position.distanceTo(group.position) < 1.6) {
+              hit = true;
+              enemy.takeDamage(35, forward, 'flame', false);
+              this.spawnFlameBurst(group.position, 1.8);
+            }
+          });
+
+          if (hit || life <= 0) {
+            if (!hit) this.spawnFlameBurst(group.position, 1.4);
+            scene.remove(group);
+            return false;
+          }
+          return true;
+        }
+      });
+
+    } else if (tier === 2) {
+      // Lv2: ファイアピラー (前方3方向に巨大な火炎竜巻柱が噴出)
+      for (let i = -1; i <= 1; i++) {
+        const offsetAng = i * 0.45;
+        const pForward = forward.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offsetAng);
+        const pPos = originPos.clone().addScaledVector(pForward, 4.5);
+        pPos.y = getTerrainHeight(pPos.x, pPos.z);
+        this.spawnFlamePillar(pPos, 5.0, 65);
+      }
+      cameraController.shake(0.35);
+
+    } else {
+      // Lv3: インフェルノ・フレア (巨大な回転火炎地獄の渦 + 吸引 + 大爆発)
+      const center = originPos.clone().addScaledVector(forward, 5.0);
+      center.y = getTerrainHeight(center.x, center.z);
+      this.spawnInfernoVortex(center, 110);
+      cameraController.shake(0.6);
+    }
+  }
+
+  spawnFlameParticle(pos) {
+    const geo = new THREE.SphereGeometry(0.22, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(pos);
-    mesh.position.y = 1.0;
+    mesh.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3));
     scene.add(mesh);
 
+    let life = 0.3;
     this.activeSpells.push({
-      mesh,
       update: (delta) => {
-        mesh.scale.multiplyScalar(1.0 + delta * 14.0);
-        mat.opacity -= delta * 3.5;
-        if (mat.opacity <= 0) {
+        life -= delta;
+        mesh.scale.multiplyScalar(0.92);
+        mat.opacity = (life / 0.3) * 0.8;
+        if (life <= 0) {
           scene.remove(mesh);
           return false;
         }
         return true;
       }
     });
-    cameraController.shake(0.3);
+  }
+
+  spawnFlameBurst(pos, radius) {
+    soundManager.playHitImpact(true);
+    const burstGroup = new THREE.Group();
+    burstGroup.position.copy(pos);
+    scene.add(burstGroup);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.3, radius * 1.5, 16),
+      new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    burstGroup.add(ring);
+
+    for (let i = 0; i < 10; i++) {
+      this.spawnFlameParticle(pos);
+    }
+
+    let life = 0.35;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        ring.scale.multiplyScalar(1.0 + delta * 6.0);
+        ring.material.opacity = (life / 0.35);
+        if (life <= 0) {
+          scene.remove(burstGroup);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnFlamePillar(pos, height, damage) {
+    const group = new THREE.Group();
+    group.position.copy(pos);
+    scene.add(group);
+
+    const geo = new THREE.CylinderGeometry(1.2, 1.8, height, 16, 1, true);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xef4444,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const pillar = new THREE.Mesh(geo, mat);
+    pillar.position.y = height / 2;
+    group.add(pillar);
+
+    const inner = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.6, 0.9, height * 1.1, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending })
+    );
+    inner.position.y = height / 2;
+    group.add(inner);
+
+    const light = new THREE.PointLight(0xef4444, 3.0, 16.0);
+    light.position.y = height / 2;
+    group.add(light);
+
+    this.dealAreaDamage(pos, 2.8, damage, 'flame', true);
+
+    let life = 0.8;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        pillar.rotation.y += delta * 12.0;
+        inner.rotation.y -= delta * 15.0;
+        const s = 1.0 + delta * 2.0;
+        pillar.scale.x *= s; pillar.scale.z *= s;
+        mat.opacity = Math.min(1.0, (life / 0.8) * 1.2);
+        inner.material.opacity = mat.opacity;
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnInfernoVortex(center, damage) {
+    const group = new THREE.Group();
+    group.position.copy(center);
+    scene.add(group);
+
+    // 3重の回転火炎リング
+    const rings = [];
+    const colors = [0xef4444, 0xf97316, 0xfacc15];
+    for (let i = 0; i < 3; i++) {
+      const r = new THREE.Mesh(
+        new THREE.RingGeometry(2.0 + i * 2.0, 2.8 + i * 2.2, 24),
+        new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
+      );
+      r.rotation.x = -Math.PI / 2;
+      r.position.y = 0.1 + i * 0.15;
+      group.add(r);
+      rings.push(r);
+    }
+
+    let life = 2.2;
+    let hitTimer = 0;
+
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        rings.forEach((r, idx) => {
+          r.rotation.z += delta * (idx % 2 === 0 ? 6.0 : -6.0) * (idx + 1);
+        });
+
+        // 吸引 ＆ 連続多段ダメージ (0.25秒毎)
+        hitTimer -= delta;
+        if (hitTimer <= 0) {
+          hitTimer = 0.25;
+          enemyManager.enemies.forEach(e => {
+            if (e.isDead || e.isDying) return;
+            const dist = e.group.position.distanceTo(center);
+            if (dist < 9.0) {
+              // 中心へ吸引
+              const pull = new THREE.Vector3().subVectors(center, e.group.position).normalize().multiplyScalar(4.5 * delta);
+              e.group.position.add(pull);
+              e.takeDamage(Math.floor(damage / 7), pull, 'flame', false);
+            }
+          });
+          cameraController.shake(0.12);
+        }
+
+        if (life <= 0) {
+          // フィナーレ大爆発
+          this.spawnFlamePillar(center, 9.0, 50);
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  // ===========================================================================
+  // ❄️ 氷魔法 (Ice) - 地表氷晶槍 / フロストノヴァ全方位凍結 / 天空巨星氷山
+  // ===========================================================================
+  castIce(tier, originPos, forward) {
+    if (tier === 1) {
+      // Lv1: アイススパイク (前方へ5本の氷槍が次々隆起)
+      for (let i = 1; i <= 5; i++) {
+        setTimeout(() => {
+          const p = originPos.clone().addScaledVector(forward, i * 1.6);
+          p.y = getTerrainHeight(p.x, p.z);
+          this.spawnIceSpike(p, 1.8, 28);
+        }, (i - 1) * 70);
+      }
+
+    } else if (tier === 2) {
+      // Lv2: フロストノヴァ (360度全方位氷晶ドーム + 3秒完全凍結)
+      const center = originPos.clone();
+      center.y = getTerrainHeight(center.x, center.z);
+      this.spawnFrostNova(center, 6.5, 50);
+      cameraController.shake(0.35);
+
+    } else {
+      // Lv3: アブソリュート・ゼロ (天空巨大氷山落下 + 超広域氷結爆砕)
+      const center = originPos.clone().addScaledVector(forward, 5.0);
+      center.y = getTerrainHeight(center.x, center.z);
+      this.spawnAbsoluteZero(center, 95);
+      cameraController.shake(0.7);
+    }
+  }
+
+  spawnIceSpike(pos, height, damage) {
+    const group = new THREE.Group();
+    group.position.copy(pos);
+    scene.add(group);
+
+    const spikeGeo = new THREE.ConeGeometry(0.45, height, 6);
+    const spikeMat = new THREE.MeshStandardMaterial({
+      color: 0xa5f3fc,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.7,
+      roughness: 0.1,
+      metalness: 0.8,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const spike = new THREE.Mesh(spikeGeo, spikeMat);
+    spike.position.y = -height; // 地下から突き出す
+    spike.rotation.x = (Math.random() - 0.5) * 0.3;
+    spike.rotation.z = (Math.random() - 0.5) * 0.3;
+    group.add(spike);
+
+    this.dealAreaDamage(pos, 2.0, damage, 'ice');
+    enemyManager.enemies.forEach(e => {
+      if (e.group.position.distanceTo(pos) < 2.0) e.freeze(1.8);
+    });
+
+    let life = 1.4;
+    let upProgress = 0;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        if (upProgress < 1.0) {
+          upProgress = Math.min(1.0, upProgress + delta * 9.0);
+          spike.position.y = -height + upProgress * (height * 1.5);
+        }
+        if (life < 0.4) {
+          spikeMat.opacity = (life / 0.4) * 0.95;
+        }
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnFrostNova(center, radius, damage) {
+    const group = new THREE.Group();
+    group.position.copy(center);
+    scene.add(group);
+
+    // 氷結魔法陣
+    const circle = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, radius, 32),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending })
+    );
+    circle.rotation.x = -Math.PI / 2;
+    circle.position.y = 0.08;
+    group.add(circle);
+
+    // 放射状12本の氷槍
+    const spikes = [];
+    const spikeMat = new THREE.MeshStandardMaterial({
+      color: 0xbae6fd,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.6,
+      roughness: 0.1,
+      metalness: 0.9,
+    });
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.4, 3.2, 5), spikeMat);
+      sp.position.set(Math.cos(ang) * (radius * 0.65), 0, Math.sin(ang) * (radius * 0.65));
+      sp.rotation.z = -Math.cos(ang) * 0.35;
+      sp.rotation.x = Math.sin(ang) * 0.35;
+      group.add(sp);
+      spikes.push(sp);
+    }
+
+    this.dealAreaDamage(center, radius, damage, 'ice');
+    enemyManager.enemies.forEach(e => {
+      if (e.group.position.distanceTo(center) <= radius) e.freeze(3.5);
+    });
+
+    let life = 1.8;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        circle.rotation.z += delta * 2.0;
+        circle.scale.multiplyScalar(1.0 + delta * 0.8);
+        circle.material.opacity = Math.min(1.0, (life / 1.8));
+
+        if (life < 0.6) {
+          const fade = life / 0.6;
+          spikes.forEach(s => s.scale.setScalar(fade));
+        }
+
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnAbsoluteZero(center, damage) {
+    const group = new THREE.Group();
+    group.position.copy(center);
+    scene.add(group);
+
+    // 天空超巨大氷山 (巨大クリスタル群)
+    const bergGeo = new THREE.ConeGeometry(3.5, 9.0, 8);
+    const bergMat = new THREE.MeshStandardMaterial({
+      color: 0xe0f2fe,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.85,
+      roughness: 0.05,
+      metalness: 0.9,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const iceberg = new THREE.Mesh(bergGeo, bergMat);
+    iceberg.position.set(0, 32.0, 0); // 天空32mから降下
+    iceberg.rotation.x = Math.PI; // 逆さで突き刺さる
+    group.add(iceberg);
+
+    const shadowRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.0, 9.0, 32),
+      new THREE.MeshBasicMaterial({ color: 0x0284c7, side: THREE.DoubleSide, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending })
+    );
+    shadowRing.rotation.x = -Math.PI / 2;
+    shadowRing.position.y = 0.1;
+    group.add(shadowRing);
+
+    let fallen = false;
+    let life = 2.5;
+
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+
+        if (!fallen) {
+          iceberg.position.y -= 75.0 * delta; // 超速落下
+          shadowRing.rotation.z += delta * 4.0;
+
+          if (iceberg.position.y <= 3.0) {
+            fallen = true;
+            iceberg.position.y = 3.0;
+
+            // 激突爆発！
+            soundManager.playHitImpact(true);
+            cameraController.shake(0.85);
+            this.spawnFrostNova(center, 9.5, damage);
+
+            // 画面ホワイトフラッシュ
+            const overlay = document.getElementById('damage-overlay');
+            if (overlay) {
+              overlay.classList.add('is-hit-heavy');
+              setTimeout(() => overlay.classList.remove('is-hit-heavy'), 250);
+            }
+          }
+        } else {
+          // 着弾後の氷山砕散フェード
+          bergMat.opacity = Math.max(0, life / 1.5);
+          iceberg.scale.multiplyScalar(1.0 + delta * 0.3);
+        }
+
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  // ===========================================================================
+  // 🌪️ 風魔法 (Wind) - 3連真空刃 / 暴風竜巻トルネード / 全天嵐結界
+  // ===========================================================================
+  castWind(tier, originPos, forward) {
+    if (tier === 1) {
+      // Lv1: ウインドカッター (3連射するエメラルド真空刃)
+      for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+          this.spawnWindCutter(originPos, forward, (i - 1) * 0.25, 30);
+        }, i * 90);
+      }
+
+    } else if (tier === 2) {
+      // Lv2: ゲイルスラッシュ (暴風竜巻ピラーが前進しながら敵を集敵)
+      this.spawnTornado(originPos, forward, 55);
+      cameraController.shake(0.35);
+
+    } else {
+      // Lv3: タイフーン・テンペスト (全天を覆う嵐の結界 + 4重回転真空刃)
+      const center = originPos.clone();
+      center.y = getTerrainHeight(center.x, center.z);
+      this.spawnTyphoonTempest(center, 90);
+      cameraController.shake(0.65);
+    }
+  }
+
+  spawnWindCutter(originPos, forward, angleOffset, damage) {
+    const group = new THREE.Group();
+    group.position.copy(originPos).add(new THREE.Vector3(0, 1.1, 0));
+    scene.add(group);
+
+    const dir = forward.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angleOffset);
+
+    // 三日月カッター刃
+    const bladeGeo = new THREE.RingGeometry(0.6, 1.5, 16, 1, 0, Math.PI * 0.85);
+    const bladeMat = new THREE.MeshBasicMaterial({
+      color: 0x34d399,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.92,
+      blending: THREE.AdditiveBlending,
+    });
+    const blade = new THREE.Mesh(bladeGeo, bladeMat);
+    blade.rotation.x = Math.PI / 2;
+    group.add(blade);
+
+    const vel = dir.clone().multiplyScalar(24.0);
+    let life = 1.3;
+
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        group.position.addScaledVector(vel, delta);
+        blade.rotation.z += delta * 25.0; // 超高速回転
+
+        // 貫通当たり判定
+        enemyManager.enemies.forEach(e => {
+          if (!e.isDead && !e.isDying && e.group.position.distanceTo(group.position) < 1.8) {
+            e.takeDamage(damage, dir, 'wind', false);
+          }
+        });
+
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnTornado(originPos, forward, damage) {
+    const group = new THREE.Group();
+    group.position.copy(originPos).add(new THREE.Vector3(0, 0, 0));
+    scene.add(group);
+
+    // 竜巻シリンダー (多段コーン)
+    const torGeo = new THREE.CylinderGeometry(2.4, 0.6, 6.0, 16, 1, true);
+    const torMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const tornado = new THREE.Mesh(torGeo, torMat);
+    tornado.position.y = 3.0;
+    group.add(tornado);
+
+    const innerTor = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 0.3, 6.5, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x6ee7b7, side: THREE.DoubleSide, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
+    );
+    innerTor.position.y = 3.25;
+    group.add(innerTor);
+
+    const vel = forward.clone().multiplyScalar(12.0);
+    let life = 2.0;
+    let hitTimer = 0;
+
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        group.position.addScaledVector(vel, delta);
+        group.position.y = getTerrainHeight(group.position.x, group.position.z);
+
+        tornado.rotation.y += delta * 16.0;
+        innerTor.rotation.y -= delta * 20.0;
+
+        hitTimer -= delta;
+        if (hitTimer <= 0) {
+          hitTimer = 0.2;
+          enemyManager.enemies.forEach(e => {
+            if (e.isDead || e.isDying) return;
+            const dist = e.group.position.distanceTo(group.position);
+            if (dist < 4.0) {
+              const pull = new THREE.Vector3().subVectors(group.position, e.group.position).normalize().multiplyScalar(3.0 * delta);
+              e.group.position.add(pull);
+              e.takeDamage(Math.floor(damage / 5), forward, 'wind', false);
+            }
+          });
+        }
+
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnTyphoonTempest(center, damage) {
+    const group = new THREE.Group();
+    group.position.copy(center);
+    scene.add(group);
+
+    // 4重回転大風陣
+    const rings = [];
+    for (let i = 0; i < 4; i++) {
+      const r = new THREE.Mesh(
+        new THREE.RingGeometry(2.5 + i * 2.0, 3.5 + i * 2.2, 24),
+        new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x10b981 : 0x6ee7b7, side: THREE.DoubleSide, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending })
+      );
+      r.rotation.x = -Math.PI / 2;
+      r.position.y = 0.2 + i * 0.3;
+      group.add(r);
+      rings.push(r);
+    }
+
+    this.dealAreaDamage(center, 10.0, damage, 'wind', true);
+
+    let life = 1.8;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        rings.forEach((r, idx) => {
+          r.rotation.z += delta * (idx % 2 === 0 ? 8.0 : -8.0);
+          r.scale.multiplyScalar(1.0 + delta * 1.2);
+          r.material.opacity = (life / 1.8) * 0.8;
+        });
+
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  // ===========================================================================
+  // ⚡ 雷魔法 (Thunder) - ジグザグプラズマ雷撃 / 連鎖放電 / 神鳴トールハンマー
+  // ===========================================================================
+  castThunder(tier, originPos, forward) {
+    if (tier === 1) {
+      // Lv1: サンダーボルト (ジグザグ放電プラズマビーム)
+      const targetPos = originPos.clone().addScaledVector(forward, 12.0);
+      targetPos.y = getTerrainHeight(targetPos.x, targetPos.z) + 1.0;
+      this.spawnLightningBolt(originPos.clone().add(new THREE.Vector3(0, 1.2, 0)), targetPos, 0xfacc15, 38);
+      cameraController.shake(0.25);
+
+    } else if (tier === 2) {
+      // Lv2: チェインライトニング (敵から敵へ最大5回跳躍連鎖放電)
+      this.spawnChainLightning(originPos, 5, 60);
+      cameraController.shake(0.35);
+
+    } else {
+      // Lv3: 神鳴・トールハンマー (天空雷雲 + 神雷槌直撃 + 大地プラズマグリッド)
+      const center = originPos.clone().addScaledVector(forward, 5.0);
+      center.y = getTerrainHeight(center.x, center.z);
+      this.spawnThorHammer(center, 120);
+      cameraController.shake(0.7);
+    }
+  }
+
+  spawnLightningBolt(startPos, endPos, colorHex, damage) {
+    const points = [];
+    const segments = 8;
+    const dir = new THREE.Vector3().subVectors(endPos, startPos);
+    const len = dir.length();
+
+    points.push(startPos.clone());
+    for (let i = 1; i < segments; i++) {
+      const p = startPos.clone().addScaledVector(dir, i / segments);
+      p.x += (Math.random() - 0.5) * 1.2;
+      p.y += (Math.random() - 0.5) * 1.2;
+      p.z += (Math.random() - 0.5) * 1.2;
+      points.push(p);
+    }
+    points.push(endPos.clone());
+
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 3 });
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+
+    // 雷撃の光
+    const light = new THREE.PointLight(colorHex, 4.0, 14.0);
+    light.position.copy(endPos);
+    scene.add(light);
+
+    // 直線上の敵にダメージ
+    enemyManager.enemies.forEach(e => {
+      if (e.isDead || e.isDying) return;
+      const d = e.group.position.distanceTo(endPos);
+      if (d < 3.0) {
+        e.takeDamage(damage, dir.normalize(), 'thunder');
+      }
+    });
+
+    let life = 0.25;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        line.visible = Math.random() > 0.2; // 稲妻の点滅
+        if (life <= 0) {
+          scene.remove(line);
+          scene.remove(light);
+          return false;
+        }
+        return true;
+      }
+    });
+  }
+
+  spawnChainLightning(originPos, maxChains, damage) {
+    const hitEnemies = [];
+    let currentPos = originPos.clone().add(new THREE.Vector3(0, 1.2, 0));
+
+    for (let i = 0; i < maxChains; i++) {
+      let closest = null;
+      let closestDist = 14.0;
+
+      enemyManager.enemies.forEach(e => {
+        if (e.isDead || e.isDying || hitEnemies.includes(e)) return;
+        const d = e.group.position.distanceTo(currentPos);
+        if (d < closestDist) {
+          closestDist = d;
+          closest = e;
+        }
+      });
+
+      if (!closest) break;
+      hitEnemies.push(closest);
+
+      const targetPos = closest.group.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+      this.spawnLightningBolt(currentPos, targetPos, 0x38bdf8, damage);
+      currentPos = targetPos;
+    }
+  }
+
+  spawnThorHammer(center, damage) {
+    const group = new THREE.Group();
+    group.position.copy(center);
+    scene.add(group);
+
+    // 天空から垂直に落雷する巨大神雷柱 (Cylinder)
+    const boltGeo = new THREE.CylinderGeometry(0.8, 1.4, 28.0, 12);
+    const boltMat = new THREE.MeshBasicMaterial({
+      color: 0xfffbeb,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+    });
+    const bolt = new THREE.Mesh(boltGeo, boltMat);
+    bolt.position.y = 14.0;
+    group.add(bolt);
+
+    const outerBolt = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.8, 2.8, 28.0, 12),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending })
+    );
+    outerBolt.position.y = 14.0;
+    group.add(outerBolt);
+
+    // 地面のプラズマグリッド放電リング
+    const grid = new THREE.Mesh(
+      new THREE.RingGeometry(1.0, 10.5, 32),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending })
+    );
+    grid.rotation.x = -Math.PI / 2;
+    grid.position.y = 0.1;
+    group.add(grid);
+
+    const light = new THREE.PointLight(0xfacc15, 6.0, 30.0);
+    light.position.y = 2.0;
+    group.add(light);
+
+    // 画面フラッシュ
+    const overlay = document.getElementById('damage-overlay');
+    if (overlay) {
+      overlay.classList.add('is-hit-heavy');
+      setTimeout(() => overlay.classList.remove('is-hit-heavy'), 280);
+    }
+
+    this.dealAreaDamage(center, 10.5, damage, 'thunder', true);
+
+    let life = 0.65;
+    this.activeSpells.push({
+      update: (delta) => {
+        life -= delta;
+        bolt.visible = Math.random() > 0.15;
+        outerBolt.visible = bolt.visible;
+        grid.rotation.z += delta * 8.0;
+        grid.scale.multiplyScalar(1.0 + delta * 2.5);
+
+        const fade = Math.max(0, life / 0.65);
+        boltMat.opacity = fade;
+        outerBolt.material.opacity = fade * 0.8;
+        grid.material.opacity = fade * 0.9;
+        light.intensity = fade * 6.0;
+
+        if (life <= 0) {
+          scene.remove(group);
+          return false;
+        }
+        return true;
+      }
+    });
   }
 
   update(delta) {
@@ -3297,6 +4227,7 @@ class MagicSystem {
     }
   }
 }
+
 
 // =============================================================================
 // 8. 敵モンスター基底クラス ＆ コリジョン半径
