@@ -600,7 +600,11 @@ html, body {
   transition: transform 0.1s ease;
 }
 
-.magic-btn:active { transform: scale(0.88); }
+.magic-btn:active, .magic-btn.active {
+  transform: scale(0.88);
+  filter: brightness(1.3);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.8) !important;
+}
 .magic-btn.is-disabled { opacity: 0.45; filter: grayscale(0.7); pointer-events: none; }
 
 .btn-explosion { border-color: #f97316; box-shadow: 0 0 12px rgba(249, 115, 22, 0.4); }
@@ -1490,4 +1494,31 @@ html, body {
 }
 .p2-hp {
   background: linear-gradient(90deg, #10b981, #34d399) !important;
+}
+
+/* =============================================================================
+   レスポンシブ & タッチ最適化 (モバイル & タブレット)
+   ============================================================================= */
+@media (max-width: 768px) {
+  .magic-palette {
+    bottom: calc(115px + var(--safe-area-inset-bottom));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    gap: 6px;
+  }
+  .magic-btn {
+    width: 48px;
+    height: 48px;
+  }
+  .magic-icon { font-size: 1.15rem; }
+  .magic-cost-tag { font-size: 0.5rem; }
+  .key-hint { display: none; }
+
+  .action-zone {
+    bottom: calc(18px + var(--safe-area-inset-bottom));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    gap: 10px;
+  }
+  .guard-btn { width: 62px; height: 62px; }
+  .dash-btn { width: 64px; height: 64px; }
+  .attack-btn { width: 84px; height: 84px; }
 }

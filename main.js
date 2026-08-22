@@ -4038,6 +4038,9 @@ function updateStatusHUD() {
 
   Object.keys(MAGIC_DATA).forEach(key => {
     const btn = document.getElementById(`btn-magic-${key}`);
+    const lvlTag = document.getElementById(`tag-level-${key}`);
+    const currentLevel = (saveData && saveData.magicLevels) ? (saveData.magicLevels[key] || 1) : 1;
+    if (lvlTag) lvlTag.innerText = `Lv.${currentLevel}`;
     if (btn) btn.classList.toggle('is-disabled', player.mp < MAGIC_DATA[key].cost);
   });
 }
@@ -4451,17 +4454,31 @@ function setupControls(player) {
     btnGuard.addEventListener('pointerleave', endGuard);
   }
 
-  // 魔法スロット
-  const magicSlots = document.querySelectorAll('.magic-slot');
-  magicSlots.forEach((slot) => {
-    slot.addEventListener('pointerdown', (e) => {
+  // 魔法パレットボタン
+  const magicButtons = document.querySelectorAll('.magic-btn');
+  magicButtons.forEach((btn) => {
+    btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      const magicKey = slot.dataset.magic;
-      if (magicKey) player.castMagic(magicKey);
+      soundManager.unlock();
+      const magicKey = btn.dataset.magic;
+      if (magicKey) {
+        btn.classList.add('active');
+        setTimeout(() => btn.classList.remove('active'), 150);
+        player.castMagic(magicKey);
+      }
     });
   });
 
   // キーボード
+  function triggerMagicByKey(key) {
+    const btn = document.getElementById(`btn-magic-${key}`);
+    if (btn) {
+      btn.classList.add('active');
+      setTimeout(() => btn.classList.remove('active'), 150);
+    }
+    player.castMagic(key);
+  }
+
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     switch (e.code) {
@@ -4476,11 +4493,11 @@ function setupControls(player) {
         break;
       case 'Space': case 'KeyJ': player.attack(); break;
       case 'ShiftLeft': case 'ShiftRight': case 'KeyK': player.dash(); break;
-      case 'KeyQ': case 'Digit1': player.castMagic('explosion'); break;
-      case 'KeyE': case 'Digit2': player.castMagic('flame'); break;
-      case 'KeyR': case 'Digit3': player.castMagic('ice'); break;
-      case 'KeyF': case 'Digit4': player.castMagic('wind'); break;
-      case 'KeyC': case 'Digit5': player.castMagic('thunder'); break;
+      case 'KeyQ': case 'Digit1': triggerMagicByKey('explosion'); break;
+      case 'KeyE': case 'Digit2': triggerMagicByKey('flame'); break;
+      case 'KeyR': case 'Digit3': triggerMagicByKey('ice'); break;
+      case 'KeyF': case 'Digit4': triggerMagicByKey('wind'); break;
+      case 'KeyC': case 'Digit5': triggerMagicByKey('thunder'); break;
     }
   });
 
